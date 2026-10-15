@@ -206,10 +206,9 @@ fn resolve_point(app: &AppHandle, cpx: i32, cpy: i32) -> Target {
         .find(|m| {
             let p = m.position();
             let s = m.size();
-            cx >= p.x as f64
-                && cx < (p.x + s.width as f64)
-                && cy >= p.y as f64
-                && cy < (p.y + s.height as f64)
+            let x0 = p.x as f64;
+            let y0 = p.y as f64;
+            cx >= x0 && cx < x0 + s.width as f64 && cy >= y0 && cy < y0 + s.height as f64
         })
         .or_else(|| monitors.first());
     if let Some(m) = chosen {
@@ -241,7 +240,7 @@ fn front_window_rect() -> Option<(i32, i32, i32, i32)> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
     unsafe {
         let hwnd: HWND = GetForegroundWindow();
-        if hwnd.is_null() {
+        if hwnd == 0 {
             return None;
         }
         let mut r: RECT = std::mem::zeroed();
