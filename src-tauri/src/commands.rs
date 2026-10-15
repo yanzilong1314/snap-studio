@@ -132,16 +132,18 @@ document.body.addEventListener('dblclick',function(){{w.close();}});\
     }
     let label = label.ok_or_else(|| "最多同时钉 16 张，请先在托盘清除钉图".to_string())?;
 
-    let builder = WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::Html(html))
+    let doc_url = format!("data:text/html;base64,{}", STANDARD.encode(html.as_bytes()));
+
+    let builder = WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::Web(doc_url))
         .title("钉图")
         .transparent(true)
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(true)
-        .inner_size(LogicalSize::new(dw, dh));
+        .inner_size(dw, dh);
 
-    match builder.build(&app) {
+    match builder.build() {
         Ok(w) => {
             let _ = w.set_focus();
             Ok(label)
