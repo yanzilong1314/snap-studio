@@ -208,6 +208,25 @@ input{font-family:inherit}
 .wbtn:hover{background:rgba(255,255,255,.09)}
 .wbtn.on{background:rgba(124,92,255,.32)}
 .wbtn i{display:block;border-radius:99px;background:currentColor}
+.textctl{display:flex;gap:4px;align-items:center}
+.fsel,.isize{
+  background:rgba(255,255,255,.06);color:var(--txt);border:1px solid var(--line);
+  border-radius:8px;font-size:12px;padding:3px 4px;outline:none;cursor:pointer;max-width:88px;
+}
+.fsel:hover,.isize:hover{border-color:var(--line-2);background:rgba(255,255,255,.1)}
+.fbold{
+  width:26px;height:26px;border-radius:8px;font-weight:800;font-size:14px;color:#a9b2ca;
+  border:1px solid var(--line);transition:all .15s;
+}
+.fbold:hover{background:rgba(255,255,255,.09);color:#fff}
+.fbold.on{background:rgba(124,92,255,.32);color:#fff;border-color:transparent}
+/* 取色器吸管吸附工具激活态由 .tool.on 复用 */
+/* 标注选中态 */
+.annSelTip{position:absolute;display:none;z-index:48;gap:6px;padding:6px;border-radius:10px;
+  background:var(--panel-2);border:1px solid var(--line-2);backdrop-filter:blur(16px);box-shadow:0 18px 44px -18px #000}
+.annSelTip button{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:#cdd6ee;font-size:12px}
+.annSelTip button:hover{background:rgba(255,255,255,.12);color:#fff}
+.annSelTip svg{width:15px;height:15px}
 
 /* 文字输入 */
 #textInput{
@@ -236,6 +255,25 @@ kbd{
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast .bar{width:3px;height:16px;border-radius:2px;background:linear-gradient(180deg,var(--a1),var(--a2))}
+
+/* ---------- 智能工具弹窗 ---------- */
+.modal{position:fixed;inset:0;z-index:300;display:grid;place-items:center;background:rgba(4,6,14,.62);backdrop-filter:blur(6px)}
+.modalCard{width:min(520px,92vw);max-height:84vh;overflow:auto;border-radius:18px;border:1px solid var(--line-2);
+  background:var(--panel-2);box-shadow:0 40px 90px -30px #000;padding:18px}
+.modalHead{display:flex;align-items:center;justify-content:space-between;font-weight:650;font-size:15px;margin-bottom:12px}
+.modalHead button{width:30px;height:30px;border-radius:9px;font-size:20px;line-height:1;color:var(--dim);background:rgba(255,255,255,.05)}
+.modalHead button:hover{background:rgba(255,255,255,.12);color:#fff}
+.modalBody{font-size:13px;color:var(--txt);line-height:1.6}
+.modalBody textarea{width:100%;min-height:120px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+  border-radius:12px;color:var(--txt);padding:10px;font-family:inherit;font-size:13px;resize:vertical;outline:none}
+.modalBody .qrbox{display:grid;place-items:center;padding:10px;background:#fff;border-radius:12px}
+.modalFoot{display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.sbtn{padding:9px 16px;border-radius:11px;font-size:13px;font-weight:600;border:1px solid var(--line);background:rgba(255,255,255,.06);color:#e9edf8}
+.sbtn:hover{background:rgba(255,255,255,.12)}
+.sbtn.primary{background:linear-gradient(135deg,var(--a1),#5f8dff 45%,var(--a2));border-color:transparent;color:#fff}
+.serr{color:var(--a3)}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
 .hidden{display:none!important}
 @media (max-width:760px){
   .brand p{display:none}
@@ -271,6 +309,12 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     </div>
     <div class="spacer"></div>
     <div class="pill" id="statusPill"><span class="dot" id="statusDot"></span><span id="statusText">待机中</span></div>
+    <div class="pill" style="gap:7px;padding:6px 10px">
+      <span style="color:var(--dim);font-size:12px">延时</span>
+      <select id="delaySel" class="fsel" style="padding:2px 4px;max-width:64px">
+        <option value="0">关</option><option value="3">3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option>
+      </select>
+    </div>
     <button class="btn primary" id="btnCapture">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5A2.5 2.5 0 0 1 18.5 21H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/></svg>
       开始捕获
@@ -335,6 +379,8 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></svg></button>
           <button class="tool" data-tool="badge" data-tip="序号 (9)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.6"/><path d="M10 9.6l2-1.1V16" stroke-linecap="round"/></svg></button>
+          <button class="tool" data-tool="picker" data-tip="取色器 (0)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5l6.5 6.5-8 8-3.6.9.9-3.6 8-8z"/><path d="M12.5 6 17 10.5"/></svg></button>
           <span class="sep"></span>
           <button class="tool" id="btnUndo" data-tip="撤销 (Ctrl+Z)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h10.5a5 5 0 0 1 0 10H9"/><path d="M7.5 5.5L4 9l3.5 3.5"/></svg></button>
@@ -345,6 +391,8 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M15.5 5.5v-.8a1.7 1.7 0 0 0-1.7-1.7H5.2A1.7 1.7 0 0 0 3.5 4.7v8.6a1.7 1.7 0 0 0 1.7 1.7h.8"/></svg></button>
           <button class="tool" id="btnSave" data-tip="保存 PNG (Ctrl+S)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 15l-4-4M12 15l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>
+          <button class="tool" id="btnSaveDir" data-tip="存到下载文件夹">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M12 11v6M9 14h6"/></svg></button>
           <button class="tool" id="btnClose" data-tip="取消选区 (Esc)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
         </div>
@@ -352,7 +400,42 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
           <div class="swatches" id="swatches"></div>
           <span class="sep"></span>
           <div class="widths" id="widths"></div>
+          <span class="sep"></span>
+          <div class="textctl" id="textctl">
+            <select id="fontSel" class="fsel" title="字体">
+              <option value="'PingFang SC','Microsoft YaHei',sans-serif">默认</option>
+              <option value="'KaiTi','STKaiti',serif">楷体</option>
+              <option value="'SimSun',serif">宋体</option>
+              <option value="'Consolas',monospace">等宽</option>
+              <option value="Impact,sans-serif">Impact</option>
+            </select>
+            <select id="sizeSel" class="isize" title="字号">
+              <option>14</option><option>18</option><option selected>24</option>
+              <option>32</option><option>44</option><option>60</option>
+            </select>
+            <button class="fbold" id="btnBold" title="粗体 (B)">B</button>
+          </div>
         </div>
+        <div class="trow" id="smartRow">
+          <span class="sep"></span>
+          <button class="tool" id="btnOCR" data-tip="文字识别 (OCR)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M7 7v10M4 17h6"/><path d="M14 9h6M14 13h4M14 17h6"/></svg></button>
+          <button class="tool" id="btnScan" data-tip="扫码识别">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.4"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.4"/><path d="M14 14h7v7"/></svg></button>
+          <button class="tool" id="btnGen" data-tip="生成二维码">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h3v3M20.5 14.5v6h-6v-3"/></svg></button>
+          <button class="tool" id="btnGif" data-tip="录屏转 GIF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.4"/><circle cx="12" cy="12.5" r="3.3"/><path d="M9 3.5h6"/></svg></button>
+          <button class="tool" id="btnPin" data-tip="钉到桌面 (钉图)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5l-4 8a2 2 0 0 0 2 3h8a2 2 0 0 0 2-3l-4-8V3"/><path d="M12 11v9"/></svg></button>
+        </div>
+      </div>
+
+      <!-- 选中标注时的浮动操作条 -->
+      <div class="annSelTip" id="selBar">
+        <button id="selDelete" title="删除选中标注 (Del)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
       </div>
     </div>
   </section>
@@ -365,10 +448,19 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     <span><kbd>Ctrl</kbd>+<kbd>S</kbd>保存</span>
     <span><kbd>Esc</kbd>重选</span>
     <span><kbd>Shift</kbd>正方形/正圆</span>
+    <span>点选标注可拖动 / 改色 / <kbd>Del</kbd> 删除</span>
   </div>
 </div>
 
 <div class="toast" id="toast"><span class="bar"></span><span id="toastText"></span></div>
+
+<div class="modal hidden" id="smartModal">
+  <div class="modalCard">
+    <div class="modalHead"><span id="smartTitle">智能工具</span><button id="smartClose" aria-label="关闭">×</button></div>
+    <div class="modalBody" id="smartBody"></div>
+    <div class="modalFoot" id="smartFoot"></div>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -393,12 +485,16 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     tool: 'rect',
     color: '#ff3b5c',
     width: 4,
+    fontFamily: "'PingFang SC','Microsoft YaHei',sans-serif",
+    fontSize: 24,
+    bold: false,
     history: [[]],        // 命令快照数组
     redoStack: [],
     preview: null,        // 绘制中的临时图形
     drag: null,
     badge: 0,
-    dragMode: null        // 'select' | 'move'
+    dragMode: null,       // 'select' | 'annotate' | 'moveSel'
+    selectedIdx: -1       // 当前选中的标注（用于编辑/删除）
   };
 
   var COLORS = ['#ff3b5c', '#ff8a3d', '#ffd23d', '#31d99c', '#22d3ee', '#5b8cff', '#a877ff', '#ffffff', '#111318'];
@@ -418,6 +514,26 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function copyText(t) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t); return; }
+    } catch (e) {}
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e2) {}
+      document.body.removeChild(ta);
+    } catch (e3) {}
+  }
+  function distToSeg(px, py, x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var l2 = dx * dx + dy * dy;
+    if (!l2) return Math.hypot(px - x1, py - y1);
+    var t = ((px - x1) * dx + (py - y1) * dy) / l2;
+    t = clamp(t, 0, 1);
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
 
   // ============ 初始化色板 / 笔宽 ============
   COLORS.forEach(function (c) {
@@ -431,6 +547,10 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       Array.prototype.forEach.call(swatches.children, function (n) { n.classList.remove('on'); });
       b.classList.add('on');
       if (textInput.style.display === 'block') textInput.style.color = c;
+      if (S.selectedIdx >= 0) {
+        var cm = S.history[S.history.length - 1][S.selectedIdx];
+        if (cm && cm.type !== 'mosaic') { cm.color = c; repaint(); }
+      }
     });
     swatches.appendChild(b);
   });
@@ -446,6 +566,14 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       b.classList.add('on');
     });
     widths.appendChild(b);
+  });
+
+  // 文字样式控制
+  $('fontSel').addEventListener('change', function () { S.fontFamily = this.value; });
+  $('sizeSel').addEventListener('change', function () { S.fontSize = parseInt(this.value, 10) || 24; });
+  $('btnBold').addEventListener('click', function () {
+    S.bold = !S.bold;
+    this.classList.toggle('on', S.bold);
   });
 
   // 工具切换
@@ -537,12 +665,15 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     S.history = [[]];
     S.redoStack = [];
     S.preview = null;
+    S.movePreview = null;
+    S.selectedIdx = -1;
     S.badge = 0;
     annCanvas.width = annCanvas.height = 0;
     annCanvas.style.display = 'none';
     selBox.style.display = 'none';
     toolbar.style.display = 'none';
     textInput.style.display = 'none';
+    hideSelBar();
   }
 
   function buildOverlay() {
@@ -657,13 +788,36 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   // ============ 指针交互 ============
   function onDown(e) {
     if (!S.img) return;
-    overlay.setPointerCapture(e.pointerId);
     var p = toImage(e);
+    // 取色器：吸取画面任意点颜色（HEX 复制）
+    if (S.tool === 'picker') {
+      var px = clamp(Math.round(p.x), 0, canvas.width - 1), py = clamp(Math.round(p.y), 0, canvas.height - 1);
+      var d = ctx.getImageData(px, py, 1, 1).data;
+      var hex = '#' + [d[0], d[1], d[2]].map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+      S.color = hex;
+      Array.prototype.forEach.call(swatches.children, function (n) { n.classList.toggle('on', n.dataset.color === hex); });
+      copyText(hex);
+      toast('已取色 ' + hex.toUpperCase() + ' · 已复制');
+      selectTool('rect');
+      return;
+    }
+    overlay.setPointerCapture(e.pointerId);
     commitTextInput();
 
     var s = S.sel;
     if (s && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
-      // 在选区内 -> 标注
+      // 先判断是否点中已有标注 -> 进入编辑（拖动/删除）
+      var hit = hitTest(p.x, p.y);
+      if (hit >= 0) {
+        S.selectedIdx = hit;
+        S.dragMode = 'moveSel';
+        S.drag = { x0: p.x, y0: p.y, moved: false, cmdBase: clone(S.history[S.history.length - 1][hit]) };
+        repaint();
+        showSelBar();
+        return;
+      }
+      S.selectedIdx = -1;
+      hideSelBar();
       S.dragMode = 'annotate';
       startAnnotate(p, e);
       return;
@@ -708,6 +862,16 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       showMag(p);
     } else if (S.dragMode === 'annotate') {
       moveAnnotate(p, e);
+    } else if (S.dragMode === 'moveSel' && S.drag && S.selectedIdx >= 0) {
+      var dx = p.x - S.drag.x0, dy = p.y - S.drag.y0;
+      if (dx || dy) {
+        S.drag.moved = true;
+        var mc = clone(S.drag.cmdBase);
+        applyDelta(mc, S.drag.cmdBase, dx, dy);
+        S.movePreview = mc;
+        repaint();
+        showSelBar();
+      }
     } else {
       overlay.style.cursor = (S.sel && insideSel(p)) ? (S.tool === 'text' ? 'text' : 'crosshair') : 'crosshair';
     }
@@ -722,6 +886,17 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       finalizeSelection();
     } else if (S.dragMode === 'annotate') {
       endAnnotate();
+    } else if (S.dragMode === 'moveSel' && S.selectedIdx >= 0) {
+      if (S.movePreview && S.drag && S.drag.moved) {
+        var arr = S.history[S.history.length - 1].slice();
+        arr[S.selectedIdx] = S.movePreview;
+        S.history.push(arr);
+        S.redoStack = [];
+        toast('已移动标注');
+      }
+      S.movePreview = null;
+      repaint();
+      showSelBar();
     }
     S.dragMode = null;
     S.drag = null;
@@ -769,6 +944,18 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     var cmds = S.history[S.history.length - 1];
     for (var i = 0; i < cmds.length; i++) drawCmd(actx, cmds[i]);
     if (S.preview) drawCmd(actx, S.preview);
+    if (S.movePreview) drawCmd(actx, S.movePreview);
+    // 选中高亮框
+    var selCmd = S.movePreview || (S.selectedIdx >= 0 ? cmds[S.selectedIdx] : null);
+    if (selCmd) {
+      var bb = cmdBBox(selCmd);
+      actx.save();
+      actx.strokeStyle = 'rgba(124,92,255,.95)';
+      actx.lineWidth = 1.4;
+      actx.setLineDash([6, 4]);
+      actx.strokeRect(bb.x - 4, bb.y - 4, bb.w + 8, bb.h + 8);
+      actx.restore();
+    }
     annCanvas.style.display = 'block';
   }
 
@@ -836,7 +1023,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
         break;
       case 'text':
         pc.fillStyle = c.color;
-        pc.font = '700 ' + c.size + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+        pc.font = (c.bold ? '800 ' : '400 ') + c.size + 'px ' + (c.fontFamily || S.fontFamily);
         pc.textBaseline = 'top';
         pc.shadowColor = 'rgba(0,0,0,.45)';
         pc.shadowBlur = 6;
@@ -858,6 +1045,98 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     }
     pc.restore();
   }
+
+  // ============ 标注命中检测 / 编辑 ============
+  function cmdHit(c, x, y) {
+    switch (c.type) {
+      case 'rect': case 'ellipse': {
+        var x1 = Math.min(c.x, c.x + c.w), x2 = Math.max(c.x, c.x + c.w);
+        var y1 = Math.min(c.y, c.y + c.h), y2 = Math.max(c.y, c.y + c.h);
+        return x >= x1 - 4 && x <= x2 + 4 && y >= y1 - 4 && y <= y2 + 4;
+      }
+      case 'line': case 'arrow':
+        return distToSeg(x, y, c.x1, c.y1, c.x2, c.y2) < Math.max(8, (c.width || 4) + 6);
+      case 'text': {
+        var w = (c.text ? c.text.length : 1) * c.size * .62;
+        return x >= c.x - 4 && x <= c.x + w + 4 && y >= c.y - 4 && y <= c.y + c.size + 4;
+      }
+      case 'badge':
+        return Math.hypot(x - c.x, y - c.y) < c.r * 1.6;
+      case 'pen': case 'highlight': {
+        if (!c.pts) return false;
+        for (var i = 0; i < c.pts.length; i++) if (Math.hypot(c.pts[i].x - x, c.pts[i].y - y) < 10) return true;
+        return false;
+      }
+      case 'mosaic': {
+        if (!c.cells) return false;
+        for (var k = 0; k < c.cells.length; k++) { var cl = c.cells[k]; if (x >= cl.x && x <= cl.x + cl.block && y >= cl.y && y <= cl.y + cl.block) return true; }
+        return false;
+      }
+    }
+    return false;
+  }
+  function hitTest(x, y) {
+    var cmds = S.history[S.history.length - 1];
+    for (var i = cmds.length - 1; i >= 0; i--) if (cmdHit(cmds[i], x, y)) return i;
+    return -1;
+  }
+  function cmdBBox(c) {
+    if (c.type === 'line' || c.type === 'arrow') {
+      return { x: Math.min(c.x1, c.x2), y: Math.min(c.y1, c.y2), w: Math.abs(c.x2 - c.x1), h: Math.abs(c.y2 - c.y1) };
+    }
+    if (c.type === 'pen' || c.type === 'highlight') {
+      var xs = c.pts.map(function (q) { return q.x; }), ys = c.pts.map(function (q) { return q.y; });
+      var minx = Math.min.apply(null, xs), miny = Math.min.apply(null, ys);
+      return { x: minx, y: miny, w: Math.max.apply(null, xs) - minx, h: Math.max.apply(null, ys) - miny };
+    }
+    if (c.type === 'mosaic') {
+      var mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+      c.cells.forEach(function (o) { mnx = Math.min(mnx, o.x); mny = Math.min(mny, o.y); mxx = Math.max(mxx, o.x + o.block); mxy = Math.max(mxy, o.y + o.block); });
+      return { x: mnx, y: mny, w: mxx - mnx, h: mxy - mny };
+    }
+    if (c.type === 'text') {
+      return { x: c.x, y: c.y, w: (c.text ? c.text.length : 1) * c.size * 0.62, h: c.size * 1.2 };
+    }
+    if (c.type === 'badge') {
+      return { x: c.x - c.r, y: c.y - c.r, w: c.r * 2, h: c.r * 2 };
+    }
+    return { x: c.x, y: c.y, w: c.w || 0, h: c.h || 0 };
+  }
+  function applyDelta(c, base, dx, dy) {
+    ['x', 'y', 'x1', 'y1', 'x2', 'y2'].forEach(function (k) {
+      if (base[k] != null) c[k] = base[k] + (k[0] === 'x' ? dx : dy);
+    });
+    if (base.pts) c.pts = base.pts.map(function (q) { return { x: q.x + dx, y: q.y + dy }; });
+    if (base.cells) c.cells = base.cells.map(function (o) { return { x: o.x + dx, y: o.y + dy, block: o.block, c: o.c }; });
+  }
+  function deleteSelected() {
+    if (S.selectedIdx < 0) return;
+    var arr = S.history[S.history.length - 1].slice();
+    arr.splice(S.selectedIdx, 1);
+    S.history.push(arr);
+    S.redoStack = [];
+    S.selectedIdx = -1;
+    hideSelBar();
+    repaint();
+    toast('已删除标注');
+  }
+  function showSelBar() {
+    var bar = $('selBar');
+    if (!bar || S.selectedIdx < 0) return;
+    var cmds = S.history[S.history.length - 1];
+    var c = S.movePreview || cmds[S.selectedIdx];
+    if (!c) return;
+    var bb = cmdBBox(c);
+    var k = ratio();
+    var b = board.getBoundingClientRect(), r = canvas.getBoundingClientRect();
+    var offX = r.left - b.left, offY = r.top - b.top;
+    bar.style.display = 'flex';
+    var cx = offX + (bb.x + bb.w / 2 - S.sel.x) * k;
+    var top = offY + (bb.y - S.sel.y) * k - 44;
+    bar.style.left = clamp(cx - bar.offsetWidth / 2, 4, Math.max(4, b.width - bar.offsetWidth - 4)) + 'px';
+    bar.style.top = Math.max(4, top) + 'px';
+  }
+  function hideSelBar() { var bar = $('selBar'); if (bar) bar.style.display = 'none'; }
 
   function startAnnotate(p, e) {
     var s = S.sel;
@@ -951,13 +1230,15 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   function openTextInput(p) {
     var k = ratio();
     var s = S.sel;
-    var size = Math.max(18, Math.round(S.width * 8));
+    var size = S.fontSize;
     textInput.value = '';
     textInput.style.display = 'block';
     textInput.style.left = ((p.x - s.x) * k) + 'px';
     textInput.style.top = ((p.y - s.y) * k - size * k * .5) + 'px';
     textInput.style.fontSize = Math.max(13, size * k) + 'px';
     textInput.style.color = S.color;
+    if (S.bold) { textInput.style.fontWeight = '800'; } else { textInput.style.fontWeight = '400'; }
+    textInput.style.fontFamily = S.fontFamily;
     textInput.dataset.x = p.x;
     textInput.dataset.y = p.y;
     textInput.dataset.size = size;
@@ -973,7 +1254,8 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     if (!txt) return;
     pushCmd({
       type: 'text', text: txt, x: px, y: py,
-      size: parseFloat(textInput.dataset.size), color: S.color
+      size: parseFloat(textInput.dataset.size), color: S.color,
+      fontFamily: S.fontFamily, bold: S.bold
     });
   }
   textInput.addEventListener('keydown', function (e) {
@@ -995,6 +1277,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   }
   $('btnUndo').addEventListener('click', undo);
   $('btnRedo').addEventListener('click', redo);
+  $('selDelete').addEventListener('click', function (e) { e.stopPropagation(); deleteSelected(); });
 
   // ============ 导出 ============
   function compose() {
@@ -1029,22 +1312,43 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       fallbackDownload(blob);
     });
   }
-  function fallbackDownload(blob) {
+  function fallbackDownload(blob, name) {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'snap-' + Date.now() + '.png';
+    a.download = name || ('snap-' + Date.now() + '.png');
     a.click();
     setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-    toast('已下载 PNG（当前环境不支持写剪贴板）');
+    toast('已保存到下载文件夹：' + a.download);
   }
   function doSave() { if (IS_TAURI) { tauriExport('save'); return; }
     if (!S.sel) { toast('请先框选区域'); return; }
     var c = compose();
     toBlob(c).then(function (blob) { if (blob) fallbackDownload(blob); });
   }
+  function doSaveFolder() {
+    if (!S.sel) { toast('请先框选区域'); return; }
+    var c = compose();
+    var ts = new Date();
+    var pad = function (n) { return ('0' + n).slice(-2); };
+    var name = 'SnapStudio_' + ts.getFullYear() + pad(ts.getMonth() + 1) + pad(ts.getDate()) + '_'
+      + pad(ts.getHours()) + pad(ts.getMinutes()) + pad(ts.getSeconds()) + '.png';
+    toBlob(c).then(function (blob) {
+      if (!blob) { toast('生成失败'); return; }
+      if (window.__tauri__ && window.__tauri__.saveImageToFolder) {
+        blob.arrayBuffer().then(function (buf) {
+          window.__tauri__.saveImageToFolder(Array.from(new Uint8Array(buf)), name)
+            .then(function (path) { toast('已保存到 ' + path); })
+            .catch(function () { fallbackDownload(blob, name); });
+        });
+      } else {
+        fallbackDownload(blob, name);
+      }
+    });
+  }
   $('btnCopy').addEventListener('click', doCopy);
   $('btnSave').addEventListener('click', doSave);
+  $('btnSaveDir').addEventListener('click', doSaveFolder);
   $('btnClose').addEventListener('click', function () {
     if (IS_TAURI && document.body.classList.contains('capturing')) { exitCaptureMode(); return; }
     resetSelection();
@@ -1052,8 +1356,20 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   });
 
   // ============ 顶部按钮 ============
-  $('btnCapture').addEventListener('click', captureScreen);
-  $('btnCapture2').addEventListener('click', captureScreen);
+  function startCaptureWithDelay() {
+    var d = parseInt($('delaySel').value, 10) || 0;
+    if (!d) { captureScreen(); return; }
+    var n = d;
+    toast('将在 ' + n + ' 秒后截屏…（可切换到要截取的位置）');
+    setStatus('延时截屏倒计时 ' + n + 's', false);
+    var iv = setInterval(function () {
+      n--;
+      if (n > 0) { toast(n + ' 秒后截屏…'); setStatus('延时截屏倒计时 ' + n + 's', false); }
+      else { clearInterval(iv); captureScreen(); }
+    }, 1000);
+  }
+  $('btnCapture').addEventListener('click', startCaptureWithDelay);
+  $('btnCapture2').addEventListener('click', startCaptureWithDelay);
   $('btnUpload').addEventListener('click', function () { $('fileInput').click(); });
   $('btnUpload2').addEventListener('click', function () { $('fileInput').click(); });
   $('fileInput').addEventListener('change', function (e) {
@@ -1118,9 +1434,15 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); doCopy(); return; }
     if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); return; }
     if (e.key === 'Escape') {
+      if (!$('smartModal').classList.contains('hidden')) { hideSmart(); return; }
       if (textInput.style.display === 'block') { commitTextInput(); return; }
       if (IS_TAURI && document.body.classList.contains('capturing')) { exitCaptureMode(); return; }
       if (S.sel) { resetSelection(); setStatus('已取消选区', false); }
+      return;
+    }
+    if (e.key === 'Delete' && S.selectedIdx >= 0 && S.sel) {
+      e.preventDefault();
+      deleteSelected();
       return;
     }
     if (e.key === 'Enter') { commitTextInput(); return; }
@@ -1211,6 +1533,223 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     setTimeout(function () { toast('提示：如需屏幕捕获，建议用 http 方式打开本页'); }, 900);
   }
 
+  // ============ 智能工具（OCR / 扫码 / 二维码 / 翻译） ============
+  var _loaded = {};
+  function loadScript(src) {
+    return new Promise(function (res, rej) {
+      if (_loaded[src]) return res();
+      var s = document.createElement('script');
+      s.src = src; s.crossOrigin = 'anonymous';
+      s.onload = function () { _loaded[src] = 1; res(); };
+      s.onerror = function () { rej(new Error('资源加载失败')); };
+      document.head.appendChild(s);
+    });
+  }
+  function showSmart(title, bodyNode, footBtns) {
+    $('smartTitle').textContent = title;
+    var body = $('smartBody'); body.innerHTML = ''; if (bodyNode) body.appendChild(bodyNode);
+    var foot = $('smartFoot'); foot.innerHTML = '';
+    (footBtns || []).forEach(function (b) {
+      var el = document.createElement('button');
+      el.className = 'sbtn' + (b.primary ? ' primary' : '');
+      el.textContent = b.label;
+      el.addEventListener('click', function () { b.fn && b.fn(); });
+      foot.appendChild(el);
+    });
+    $('smartModal').classList.remove('hidden');
+  }
+  function hideSmart() { $('smartModal').classList.add('hidden'); }
+  $('smartClose').addEventListener('click', hideSmart);
+  $('smartModal').addEventListener('click', function (e) { if (e.target === this) hideSmart(); });
+
+  function spinNode(msg) { var d = document.createElement('div'); d.innerHTML = '<span class="spin"></span>' + msg; return d; }
+
+  function doOCR() {
+    if (!S.sel) { toast('请先框选区域'); return; }
+    toast('正在加载 OCR 组件…');
+    loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js')
+      .then(function () {
+        if (!window.Tesseract) { toast('OCR 组件加载失败'); return; }
+        var c = compose();
+        showSmart('OCR 文字识别', spinNode('初始化识别引擎…'), []);
+        Tesseract.recognize(c, 'chi_sim+eng', {
+          logger: function (m) {
+            if (m && m.status === 'recognizing text') {
+              $('smartBody').innerHTML = '';
+              $('smartBody').appendChild(spinNode('识别中 ' + Math.round((m.progress || 0) * 100) + '%'));
+            }
+          }
+        })
+          .then(function (res) { showOCRResult((res.data.text || '').trim()); })
+          .catch(function (e) { $('smartBody').innerHTML = '<div class="serr">识别失败：' + (e && e.message || e) + '</div>'; });
+      })
+      .catch(function () { toast('OCR 组件加载失败（需要联网）'); });
+  }
+  function showOCRResult(text) {
+    var body = document.createElement('div');
+    var ta = document.createElement('textarea'); ta.value = text || '(未识别到文字)';
+    body.appendChild(ta);
+    showSmart('OCR 文字识别', body, [
+      { label: '复制文字', primary: true, fn: function () { copyText(ta.value); toast('已复制文字'); } },
+      { label: '翻译', fn: function () { translateText(ta.value); } }
+    ]);
+  }
+  function translateText(text) {
+    text = (text || '').trim();
+    if (!text) { toast('没有可翻译的文字'); return; }
+    var hasZh = /[一-龥]/.test(text);
+    var pair = hasZh ? 'zh|en' : 'en|zh';
+    showSmart('翻译中…', spinNode('正在翻译…'), []);
+    fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=' + pair)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var t = (d && d.responseData && d.responseData.translatedText) || (d && d.response) || '';
+        if (!t) throw new Error('无翻译结果');
+        var body = document.createElement('div');
+        var ta = document.createElement('textarea'); ta.value = t; body.appendChild(ta);
+        showSmart('翻译结果（' + (hasZh ? '中→英' : '英→中') + '）', body,
+          [{ label: '复制译文', primary: true, fn: function () { copyText(ta.value); toast('已复制译文'); } }]);
+      })
+      .catch(function (e) { $('smartBody').innerHTML = '<div class="serr">翻译失败：' + (e && e.message || e) + '</div>'; });
+  }
+  function doScan() {
+    if (!S.sel) { toast('先框选含二维码的区域'); return; }
+    toast('正在加载扫码组件…');
+    loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js')
+      .then(function () {
+        if (!window.jsQR) { toast('扫码组件加载失败'); return; }
+        var c = compose();
+        var g = c.getContext('2d');
+        var img = g.getImageData(0, 0, c.width, c.height);
+        var code = jsQR(img.data, c.width, c.height);
+        if (code && code.data) {
+          var body = document.createElement('div');
+          var pre = document.createElement('div');
+          pre.style.whiteSpace = 'pre-wrap'; pre.style.wordBreak = 'break-all'; pre.textContent = code.data;
+          body.appendChild(pre);
+          showSmart('扫码结果', body, [
+            { label: '复制内容', primary: true, fn: function () { copyText(code.data); toast('已复制'); } },
+            { label: '打开链接', fn: function () { if (/^https?:\/\//.test(code.data)) window.open(code.data, '_blank'); else toast('不是网址'); } }
+          ]);
+        } else {
+          var empty = document.createElement('div');
+          empty.textContent = '未识别到二维码，请框选更清晰的区域。';
+          showSmart('扫码结果', empty, []);
+        }
+      })
+      .catch(function () { toast('扫码组件加载失败（需要联网）'); });
+  }
+  function doGen() {
+    toast('正在加载二维码组件…');
+    loadScript('https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js')
+      .then(function () {
+        if (!window.QRCode) { toast('二维码组件加载失败'); return; }
+        var body = document.createElement('div');
+        var input = document.createElement('input');
+        input.placeholder = '输入文字或网址，如 https://snap.studio';
+        input.style.cssText = 'width:100%;padding:10px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--txt);outline:none;font-family:inherit;font-size:13px';
+        var box = document.createElement('div'); box.className = 'qrbox'; box.style.marginTop = '12px';
+        body.appendChild(input); body.appendChild(box);
+        var foot = [
+          { label: '生成', primary: true, fn: function () { box.innerHTML = ''; new QRCode(box, { text: input.value || 'https://snap.studio', width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M }); } },
+          { label: '保存图片', fn: function () {
+            var cv = box.querySelector('canvas');
+            if (cv) { cv.toBlob(function (b) { fallbackDownload(b, 'qrcode.png'); }); }
+            else { var im = box.querySelector('img'); if (im) { fetch(im.src).then(function (r) { return r.blob(); }).then(function (b) { fallbackDownload(b, 'qrcode.png'); }); } }
+          } }
+        ];
+        showSmart('生成二维码', body, foot);
+        new QRCode(box, { text: 'https://snap.studio', width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+      })
+      .catch(function () { toast('二维码组件加载失败（需要联网）'); });
+  }
+  $('btnOCR').addEventListener('click', doOCR);
+  $('btnScan').addEventListener('click', doScan);
+  $('btnGen').addEventListener('click', doGen);
+
+  // 录屏转 GIF
+  function doGif() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      toast('当前环境不支持录屏'); return;
+    }
+    toast('正在加载 GIF 组件…');
+    loadScript('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js')
+      .then(function () {
+        if (!window.GIF) { toast('GIF 组件加载失败'); return; }
+        navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 10 }, audio: false })
+          .then(function (stream) { startGifRecord(stream); })
+          .catch(function () { toast('已取消录屏'); });
+      })
+      .catch(function () { toast('GIF 组件加载失败（需要联网）'); });
+  }
+  function startGifRecord(stream) {
+    var video = document.createElement('video');
+    video.srcObject = stream; video.muted = true; video.playsInline = true;
+    video.play().then(function () {
+      var vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw || !vh) { toast('录屏分辨率获取失败'); stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      var scale = Math.min(1, 720 / vw);
+      var w = Math.round(vw * scale), h = Math.round(vh * scale);
+      var off = document.createElement('canvas'); off.width = w; off.height = h;
+      var octx = off.getContext('2d');
+      var gif = new GIF({ workers: 2, quality: 12, width: w, height: h, workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js' });
+      var fps = 10, frameMs = 1000 / fps, maxMs = 15000, start = performance.now(), last = 0, raf = 0, done = false;
+      showSmart('录屏中…', spinNode('准备录制…'), [{ label: '停止并生成', primary: true, fn: stop }]);
+      function stop() {
+        if (done) return;
+        done = true; cancelAnimationFrame(raf);
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        $('smartBody').innerHTML = ''; $('smartBody').appendChild(spinNode('正在合成 GIF…'));
+      }
+      function tick() {
+        if (done) return;
+        var now = performance.now();
+        if (now - last >= frameMs) {
+          last = now;
+          octx.drawImage(video, 0, 0, w, h);
+          gif.addFrame(octx, { copy: true, delay: frameMs });
+        }
+        var el = (now - start) / 1000;
+        $('smartBody').innerHTML = ''; $('smartBody').appendChild(spinNode('录制中 ' + el.toFixed(1) + 's（最长 15s，点“停止并生成”）'));
+        if (now - start >= maxMs) { stop(); return; }
+        raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      gif.on('progress', function (p) {
+        $('smartBody').innerHTML = ''; $('smartBody').appendChild(spinNode('生成 GIF 中 ' + Math.round(p * 100) + '%'));
+      });
+      gif.on('finished', function (blob) {
+        var body = document.createElement('div');
+        body.textContent = 'GIF 已生成（' + Math.round(blob.size / 1024) + ' KB），可保存到下载文件夹。';
+        showSmart('GIF 已生成', body, [
+          { label: '保存到下载文件夹', primary: true, fn: function () { fallbackDownload(blob, 'snap-record.gif'); } },
+          { label: '重新录制', fn: function () { hideSmart(); doGif(); } }
+        ]);
+      });
+      gif.render();
+    }).catch(function () { toast('录屏启动失败'); stream.getTracks().forEach(function (t) { t.stop(); }); });
+  }
+  $('btnGif').addEventListener('click', doGif);
+
+  // 钉图：把当前选区钉到桌面（仅桌面端可用；网页端提示）
+  function doPin() {
+    if (!S.sel) { toast('请先框选区域'); return; }
+    if (typeof window.__tauri__ !== 'undefined' && window.__tauri__.pinImage) {
+      var c = compose();
+      toBlob(c).then(function (blob) {
+        blob.arrayBuffer().then(function (buf) {
+          window.__tauri__.pinImage(Array.from(new Uint8Array(buf)))
+            .then(function (label) { toast('已钉到桌面：' + label + '（拖动移动 · 双击关闭）'); })
+            .catch(function (e) { toast('钉图失败：' + e); });
+        });
+      });
+    } else {
+      toast('钉图是桌面端专属功能（当前为网页版）');
+    }
+  }
+  $('btnPin').addEventListener('click', doPin);
+
+
   // ============ Tauri 原生桥接 ============
   var T = IS_TAURI ? window.__TAURI__ : null;
 
@@ -1265,6 +1804,16 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   }
 
   if (IS_TAURI) {
+    // 暴露原生专属能力给前端（网页版无此对象，自动回退）
+    window.__tauri__ = {
+      saveImageToFolder: function (bytes, name) {
+        return T.core.invoke('save_image_to_folder', { bytes: bytes, name: name });
+      },
+      pinImage: function (bytes) {
+        return T.core.invoke('pin_image', { bytes: bytes });
+      }
+    };
+
     T.event.listen('snap:capture', function (ev) { enterCaptureMode(ev.payload); });
     setStatus('待机中 · 热键 Ctrl/⌘+Shift+A 截图', false);
     // 隐藏 Web 专属的“屏幕捕获”文案，桌面端用系统热键

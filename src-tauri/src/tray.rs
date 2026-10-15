@@ -22,8 +22,9 @@ pub fn build_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         Some("CmdOrControl+Shift+A"),
     )?;
     let show = MenuItem::with_id(app, "show", "打开主窗口", true, None::<&str>)?;
+    let clearpins = MenuItem::with_id(app, "clearpins", "清除所有钉图", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    menu.append_items(&[&capture, &show, &quit])?;
+    menu.append_items(&[&capture, &show, &clearpins, &quit])?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(icon)
@@ -42,6 +43,10 @@ pub fn build_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = w.show();
                     let _ = w.set_focus();
                 }
+            }
+            "clearpins" => {
+                let n = crate::commands::clear_pins_impl(app);
+                eprintln!("已清除 {} 个钉图窗口", n);
             }
             _ => {}
         })

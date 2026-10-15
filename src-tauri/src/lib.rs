@@ -29,6 +29,9 @@ pub fn run() {
             commands::grab_screen,
             commands::export_capture,
             commands::reset_window,
+            commands::save_image_to_folder,
+            commands::pin_image,
+            commands::clear_pins,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

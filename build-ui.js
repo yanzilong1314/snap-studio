@@ -99,6 +99,16 @@ const BRIDGE = `
   }
 
   if (IS_TAURI) {
+    // 暴露原生专属能力给前端（网页版无此对象，自动回退）
+    window.__tauri__ = {
+      saveImageToFolder: function (bytes, name) {
+        return T.core.invoke('save_image_to_folder', { bytes: bytes, name: name });
+      },
+      pinImage: function (bytes) {
+        return T.core.invoke('pin_image', { bytes: bytes });
+      }
+    };
+
     T.event.listen('snap:capture', function (ev) { enterCaptureMode(ev.payload); });
     setStatus('待机中 · 热键 Ctrl/⌘+Shift+A 截图', false);
     // 隐藏 Web 专属的“屏幕捕获”文案，桌面端用系统热键

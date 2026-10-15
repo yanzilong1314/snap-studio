@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "pins",
+  "description": "钉图独立窗口的能力集（透明/置顶/可拖动/可关闭）",
+  "windows": [
+    "pin-0", "pin-1", "pin-2", "pin-3", "pin-4", "pin-5", "pin-6", "pin-7",
+    "pin-8", "pin-9", "pin-10", "pin-11", "pin-12", "pin-13", "pin-14", "pin-15"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-minimize"
+  ]
+}
