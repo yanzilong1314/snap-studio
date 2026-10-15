@@ -15,6 +15,12 @@ body.capturing .stage{border:none;border-radius:0;padding:0;min-height:100vh}
 body.capturing .boardwrap{position:fixed;inset:0;display:block!important;border-radius:0;box-shadow:none;background:#000}
 body.capturing #displayCanvas{max-width:100vw!important;max-height:100vh!important;width:auto!important;height:auto!important;border-radius:0}
 body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
+/* ===== Tauri 长截图浮动控制条态（主窗缩为小条，须置于 capturing 规则之后） ===== */
+body.longmode{overflow:hidden}
+body.longmode .boardwrap{display:none!important}
+body.longmode .stage,body.longmode .app{min-height:0!important}
+body.longmode #longBar{left:0;right:0;top:0;bottom:0;transform:none;border-radius:0;justify-content:center;padding:0 12px;gap:10px;background:rgba(10,13,22,.92)}
+body.longmode #toast{bottom:auto;top:6px}
 `;
 
 // 1) 注入截屏全屏态 CSS
@@ -59,6 +65,17 @@ const BRIDGE = `
   }
 
   function enterCaptureMode(shot) {
+    // 热键打断长截图：安静清理会话（不碰窗口几何，随后 Rust 会铺满覆盖层）
+    if (S.long) {
+      var wasAuto = S.long.auto;
+      S.long = null;
+      hideLongBar();
+      document.body.classList.remove('longmode');
+      toolbar.style.display = '';
+      if (wasAuto) {
+        try { window.__tauri__.endAutoScroll().catch(function () {}); } catch (e) {}
+      }
+    }
     document.body.classList.add('capturing');
     S.capture = shot;   // 记录物理原点，供长截图把选区换算成屏幕物理坐标
     var img = new Image();
@@ -115,6 +132,18 @@ const BRIDGE = `
       },
       captureRegion: function (x, y, w, h) {
         return T.core.invoke('capture_region', { x: x, y: y, w: w, h: h });
+      },
+      enterLongMode: function (w, h, cx, cy) {
+        return T.core.invoke('enter_long_mode', { w: w, h: h, cx: cx, cy: cy });
+      },
+      scrollAt: function (x, y, notches) {
+        return T.core.invoke('scroll_at', { x: x, y: y, notches: notches });
+      },
+      endAutoScroll: function () {
+        return T.core.invoke('end_auto_scroll');
+      },
+      resetWindow: function () {
+        return T.core.invoke('reset_window');
       },
       setCaptureMode: function (mode) {
         return T.core.invoke('set_capture_mode', { mode: mode });

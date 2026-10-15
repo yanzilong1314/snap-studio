@@ -233,27 +233,119 @@ fn resolve_point(app: &AppHandle, cpx: i32, cpy: i32) -> Target {
     t
 }
 
-/// 前台窗口矩形（物理屏幕坐标）。Windows 用 user32；其他平台暂不支持，返回 None。
-#[cfg(target_os = "windows")]
-fn front_window_rect() -> Option<(i32, i32, i32, i32)> {
-    use windows_sys::Win32::Foundation::{HWND, RECT};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
-    unsafe {
-        let hwnd: HWND = GetForegroundWindow();
-        if hwnd == 0 {
-            return None;
+/// 前台窗口矩形（物理屏幕坐标）。
+/// - Windows：user32 GetForegroundWindow + GetWindowRect（本身就是物理像素）；
+/// - macOS：osascript 调 System Events 取前台窗口（逻辑点），排除自身应用后
+///   按所在显示器缩放比换算成物理像素；取不到 / 未授权时返回 None（回退整屏）。
+fn front_window_rect(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    let _ = app; // Windows 实现不使用 app（macOS 换算缩放比需要）
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Foundation::{HWND, RECT};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
+        unsafe {
+            let hwnd: HWND = GetForegroundWindow();
+            if hwnd == 0 {
+                return None;
+            }
+            let mut r: RECT = std::mem::zeroed();
+            if GetWindowRect(hwnd, &mut r) == 0 {
+                return None;
+            }
+            Some((r.left, r.top, r.right - r.left, r.bottom - r.top))
         }
-        let mut r: RECT = std::mem::zeroed();
-        if GetWindowRect(hwnd, &mut r) == 0 {
-            return None;
-        }
-        Some((r.left, r.top, r.right - r.left, r.bottom - r.top))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        front_window_rect_macos(app)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = app;
+        None
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-fn front_window_rect() -> Option<(i32, i32, i32, i32)> {
-    None
+/// macOS：osascript + System Events 读取前台窗口矩形（逻辑点 → 物理像素）。
+/// 需要「辅助功能」权限；被拒绝、无窗口或解析失败时返回 None（调用方回退整屏）。
+#[cfg(target_os = "macos")]
+fn front_window_rect_macos(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    use std::process::Command;
+    // 输出：应用路径|窗口x|窗口y|宽|高（System Events 使用逻辑点坐标）
+    let script = "tell application \"System Events\"\n  try\n    set fp to first application process whose frontmost is true\n    set appPath to POSIX path of (application file of fp) as string\n    set fw to front window of fp\n    set p to position of fw\n    set s to size of fw\n    return appPath & \"|\" & (item 1 of p as string) & \"|\" & (item 2 of p as string) & \"|\" & (item 1 of s as string) & \"|\" & (item 2 of s as string)\n  end try\nend tell";
+    let out = Command::new("osascript").arg("-e").arg(script).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let parts: Vec<&str> = text.trim().split('|').collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    // 前台若为本应用（按钮触发时主窗在前台），交回退逻辑处理
+    if let Some(our) = our_app_bundle_path() {
+        let a = parts[0].trim_end_matches('/');
+        if a == our.trim_end_matches('/') {
+            return None;
+        }
+    }
+    let lx: f64 = parts[1].trim().parse().ok()?;
+    let ly: f64 = parts[2].trim().parse().ok()?;
+    let lw: f64 = parts[3].trim().parse().ok()?;
+    let lh: f64 = parts[4].trim().parse().ok()?;
+    if lw < 8.0 || lh < 8.0 {
+        return None;
+    }
+    Some(logical_to_physical(app, lx, ly, lw, lh))
+}
+
+/// 本应用 .app bundle 路径（macOS），如 /Applications/SnapStudio.app
+#[cfg(target_os = "macos")]
+fn our_app_bundle_path() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let s = exe.to_str()?;
+    let idx = s.find("/Contents/MacOS/")?;
+    Some(s[..idx].to_string())
+}
+
+/// 逻辑点矩形 → 物理像素矩形：取包含窗口中心的显示器，按该屏缩放比换算。
+/// （混合 DPI 跨屏窗口为近似值，以窗口中心所在屏的缩放比为准。）
+#[cfg(target_os = "macos")]
+fn logical_to_physical(app: &AppHandle, lx: f64, ly: f64, lw: f64, lh: f64) -> (i32, i32, i32, i32) {
+    let win = app.get_webview_window("main");
+    let monitors: Vec<tauri::Monitor> = win
+        .as_ref()
+        .and_then(|w| w.available_monitors().ok())
+        .unwrap_or_default();
+    let cx = lx + lw / 2.0;
+    let cy = ly + lh / 2.0;
+    for m in &monitors {
+        let p = m.position();
+        let s = m.size();
+        let sc = if m.scale_factor() > 0.0 {
+            m.scale_factor()
+        } else {
+            1.0
+        };
+        let x0 = p.x as f64 / sc;
+        let y0 = p.y as f64 / sc;
+        let x1 = x0 + s.width as f64 / sc;
+        let y1 = y0 + s.height as f64 / sc;
+        if cx >= x0 && cx < x1 && cy >= y0 && cy < y1 {
+            return (
+                (lx * sc).round() as i32,
+                (ly * sc).round() as i32,
+                (lw * sc).round() as i32,
+                (lh * sc).round() as i32,
+            );
+        }
+    }
+    (
+        lx.round() as i32,
+        ly.round() as i32,
+        lw.round() as i32,
+        lh.round() as i32,
+    )
 }
 
 /// 两矩形 (x,y,w,h) 相交面积是否≥前者面积一半（判断前台窗口是否即本应用主窗口）。
@@ -319,7 +411,7 @@ pub fn capture_window_now(app: &AppHandle) -> Result<(), String> {
     }
     let result = (|| -> Result<(), String> {
         // 先在隐藏主窗前取前台窗口（热键触发时目标应用在前台）
-        let front = front_window_rect();
+        let front = front_window_rect(app);
         let main_rect = app.get_webview_window("main").and_then(|w| {
             let p = w.outer_position().ok()?;
             let s = w.outer_size().ok()?;
@@ -566,4 +658,138 @@ pub fn capture_all_now(app: &AppHandle) -> Result<(), String> {
         }
     }
     result
+}
+
+// ==================== 长截图：自动滚动 + 浮动控制条 ====================
+
+/// Windows：自动滚动前记录原始光标位置，结束时还原（避免光标乱跳）。
+#[cfg(target_os = "windows")]
+static ORIG_CURSOR: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new(None);
+
+/// 向指定物理坐标发送一次「向下翻页」滚动。
+/// - Windows：先把光标移到目标点再发滚轮事件，事件直达光标下的目标窗口；
+///   控制条容器 pointer-events:none，滚轮可穿透本应用窗口。
+/// - macOS：向最前面应用发送 Page Down（需辅助功能权限，每次一页）。
+#[cfg(target_os = "windows")]
+pub fn scroll_at(_app: &AppHandle, x: i32, y: i32, notches: i32) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetCursorPos, SetCursorPos, MOUSEEVENTF_WHEEL, mouse_event,
+    };
+    let n = notches.clamp(-10, 10);
+    if n == 0 {
+        return Ok(());
+    }
+    unsafe {
+        // 首次调用记录原光标位置
+        let mut guard = ORIG_CURSOR.lock().unwrap();
+        if guard.is_none() {
+            let mut pt: POINT = std::mem::zeroed();
+            if GetCursorPos(&mut pt) != 0 {
+                *guard = Some((pt.x, pt.y));
+            }
+        }
+        drop(guard);
+        if SetCursorPos(x, y) == 0 {
+            return Err(String::from("移动光标失败，无法自动滚动"));
+        }
+        // 负值 = 向下滚动（内容上移）；一档 = 120 单位
+        let delta: u32 = (n * -120) as u32;
+        mouse_event(MOUSEEVENTF_WHEEL, 0, 0, delta, 0);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn scroll_at(_app: &AppHandle, _x: i32, _y: i32, notches: i32) -> Result<(), String> {
+    use std::process::Command;
+    if notches <= 0 {
+        return Ok(());
+    }
+    // System Events 无滚轮注入，用 Page Down（key code 121）代替，每次一页
+    let out = Command::new("osascript")
+        .args(["-e", "tell application \"System Events\" to key code 121"])
+        .output()
+        .map_err(|e| format!("调用 osascript 失败：{e}"))?;
+    if !out.status.success() {
+        return Err(String::from(
+            "无法发送翻页键：请在「系统设置 → 隐私与安全性 → 辅助功能」中授权 SnapStudio",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub fn scroll_at(_app: &AppHandle, _x: i32, _y: i32, _notches: i32) -> Result<(), String> {
+    Err(String::from("当前平台不支持自动滚动"))
+}
+
+/// 结束自动滚动：还原光标位置（Windows；其他平台为空操作）。
+pub fn end_auto_scroll() {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::SetCursorPos;
+        let orig = {
+            let mut guard = ORIG_CURSOR.lock().unwrap();
+            guard.take()
+        };
+        if let Some((x, y)) = orig {
+            unsafe {
+                let _ = SetCursorPos(x, y);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 其他平台无需还原
+    }
+}
+
+/// 进入长截图模式：把主窗口缩小为底部居中的浮动控制条（露出目标窗口）。
+/// (cx, cy) 为捕获区域中心的物理坐标，用于选择所在显示器定位控制条。
+pub fn enter_long_mode(app: &AppHandle, w: f64, h: f64, cx: i32, cy: i32) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| String::from("找不到主窗口"))?;
+    let monitors: Vec<tauri::Monitor> = win
+        .available_monitors()
+        .map_err(|e| format!("枚举显示器失败：{e}"))?;
+    let cxf = cx as f64;
+    let cyf = cy as f64;
+    let chosen = monitors
+        .iter()
+        .find(|m| {
+            let p = m.position();
+            let s = m.size();
+            let x0 = p.x as f64;
+            let y0 = p.y as f64;
+            cxf >= x0 && cxf < x0 + s.width as f64 && cyf >= y0 && cyf < y0 + s.height as f64
+        })
+        .or_else(|| monitors.first());
+    let (lx, ly) = if let Some(m) = chosen {
+        let p = m.position();
+        let s = m.size();
+        let sc = if m.scale_factor() > 0.0 {
+            m.scale_factor()
+        } else {
+            1.0
+        };
+        let mw = s.width as f64 / sc;
+        let mh = s.height as f64 / sc;
+        let mx0 = p.x as f64 / sc;
+        let my0 = p.y as f64 / sc;
+        let x = mx0 + (mw - w).max(0.0) / 2.0;
+        let y = (my0 + mh - h - 88.0).max(my0);
+        (x, y)
+    } else {
+        (120.0, 120.0)
+    };
+    win.set_always_on_top(true)
+        .map_err(|e| format!("设置置顶失败：{e}"))?;
+    win.set_size(LogicalSize::new(w, h))
+        .map_err(|e| format!("调整窗口大小失败：{e}"))?;
+    win.set_position(LogicalPosition::new(lx, ly))
+        .map_err(|e| format!("移动窗口失败：{e}"))?;
+    let _ = win.show();
+    Ok(())
 }

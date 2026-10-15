@@ -260,7 +260,9 @@ kbd{
 .longbar{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:210;display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:14px;background:rgba(12,15,24,.96);border:1px solid var(--line-2);box-shadow:0 24px 60px -22px #000;color:#e9edf8;font-size:13px;backdrop-filter:blur(14px)}
 .longbar.hidden{display:none}
 .longInfo{white-space:nowrap;opacity:.9}
-.longBtns{display:flex;gap:8px}
+.longBtns{display:flex;gap:8px;pointer-events:auto}
+/* 容器不响应指针事件：滚轮/点击穿透到下方的目标窗口，仅按钮可交互 */
+.longbar{pointer-events:none}
 .lbtn{border:1px solid var(--line-2);background:rgba(255,255,255,.06);color:inherit;padding:6px 12px;border-radius:9px;font-size:13px;cursor:pointer;white-space:nowrap}
 .lbtn:hover{background:rgba(255,255,255,.12)}
 .lbtn.primary{background:linear-gradient(135deg,var(--a1),var(--a2));border:none;color:#0b0e16;font-weight:650}
@@ -298,6 +300,12 @@ body.capturing .stage{border:none;border-radius:0;padding:0;min-height:100vh}
 body.capturing .boardwrap{position:fixed;inset:0;display:block!important;border-radius:0;box-shadow:none;background:#000}
 body.capturing #displayCanvas{max-width:100vw!important;max-height:100vh!important;width:auto!important;height:auto!important;border-radius:0}
 body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
+/* ===== Tauri 长截图浮动控制条态（主窗缩为小条，须置于 capturing 规则之后） ===== */
+body.longmode{overflow:hidden}
+body.longmode .boardwrap{display:none!important}
+body.longmode .stage,body.longmode .app{min-height:0!important}
+body.longmode #longBar{left:0;right:0;top:0;bottom:0;transform:none;border-radius:0;justify-content:center;padding:0 12px;gap:10px;background:rgba(10,13,22,.92)}
+body.longmode #toast{bottom:auto;top:6px}
 </style>
 </head>
 <body>
@@ -485,7 +493,11 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
 <div class="longbar hidden" id="longBar">
   <span class="longInfo" id="longInfo">长截图 · 已捕获 0 帧</span>
   <span class="longBtns">
-    <button class="lbtn primary" id="longNext">捕获下一屏</button>
+    <button class="lbtn primary" id="longAuto">自动滚动</button>
+    <select id="longSpeed" class="fsel" aria-label="滚动速度与幅度">
+      <option value="2">慢</option><option value="3" selected>中</option><option value="5">快</option>
+    </select>
+    <button class="lbtn" id="longNext">捕获下一屏</button>
     <button class="lbtn" id="longDone">完成拼接</button>
     <button class="lbtn ghost" id="longCancel">取消</button>
   </span>
@@ -525,7 +537,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     dragMode: null,       // 'select' | 'annotate' | 'moveSel'
     selectedIdx: -1,      // 当前选中的标注（用于编辑/删除）
     capture: null,        // 最近一次截屏的 Shot（含 x/y 物理原点），用于长截图换算物理坐标
-    long: null            // 长截图会话 { region, acc, frames, busy }
+    long: null            // 长截图会话 { region, cx, cy, acc, frames, busy, auto, stall }
   };
 
   var COLORS = ['#ff3b5c', '#ff8a3d', '#ffd23d', '#31d99c', '#22d3ee', '#5b8cff', '#a877ff', '#ffffff', '#111318'];
@@ -1426,21 +1438,29 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     if (!S.sel) { toast('请先框选要长截图的区域'); return; }
     if (!isTauri()) { toast('滚动长截图为桌面版功能（网页版暂不支持）'); return; }
     var cap = S.capture || { x: 0, y: 0 };
+    var region = {
+      x: Math.round(cap.x + S.sel.x),
+      y: Math.round(cap.y + S.sel.y),
+      w: Math.round(S.sel.w),
+      h: Math.round(S.sel.h)
+    };
     S.long = {
-      region: {
-        x: Math.round(cap.x + S.sel.x),
-        y: Math.round(cap.y + S.sel.y),
-        w: Math.round(S.sel.w),
-        h: Math.round(S.sel.h)
-      },
-      acc: null, frames: 0, busy: false
+      region: region,
+      cx: region.x + Math.round(region.w / 2),   // 区域中心（物理坐标），自动滚动落点
+      cy: region.y + Math.round(region.h / 2),
+      acc: null, frames: 0, busy: false, auto: false, stall: 0
     };
     toolbar.style.display = 'none';
     hideSelBar();
     selBox.style.display = 'none';
+    // 主窗缩小为底部浮动控制条，露出目标窗口（容器 pointer-events:none，滚轮穿透）
+    document.body.classList.add('longmode');
+    if (window.__tauri__ && window.__tauri__.enterLongMode) {
+      window.__tauri__.enterLongMode(820, 64, S.long.cx, S.long.cy).catch(function () {});
+    }
     updateLongBar();
     $('longBar').classList.remove('hidden');
-    toast('已进入长截图：滚动目标内容后点「捕获下一屏」，到底后点「完成拼接」');
+    toast('长截图就绪：点「自动滚动」全自动捕获，也可手动滚动后点「捕获下一屏」');
     captureNextFrame();
   }
 
@@ -1451,9 +1471,16 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     window.__tauri__.captureRegion(r.x, r.y, r.w, r.h).then(function (shot) {
       var img = new Image();
       img.onload = function () { S.long.busy = false; appendFrame(img); };
-      img.onerror = function () { S.long.busy = false; toast('帧加载失败'); };
+      img.onerror = function () {
+        S.long.busy = false;
+        if (S.long && S.long.auto) { scheduleAutoStep(); } else { toast('帧加载失败'); }
+      };
       img.src = shot.dataUrl;
-    }).catch(function (e) { S.long.busy = false; toast('捕获失败：' + e); });
+    }).catch(function (e) {
+      S.long.busy = false;
+      if (S.long && S.long.auto) { stopAutoScroll(true); toast('自动捕获失败：' + e); }
+      else { toast('捕获失败：' + e); }
+    });
   }
 
   function appendFrame(img) {
@@ -1465,6 +1492,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       c0.getContext('2d').drawImage(img, 0, 0);
       L.acc = c0; L.frames = 1;
       updateLongBar();
+      if (L.auto) scheduleAutoStep();
       return;
     }
     var acc = L.acc;
@@ -1479,28 +1507,109 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       { data: accData, w: acc.width, h: acc.height },
       { data: frData, w: img.width, h: img.height }
     );
-    if (!res || res.appendH <= 0) { toast('未检测到新内容，拼接结束'); finishLongCapture(); return; }
+    if (!res || res.appendH <= 0) {
+      if (L.auto) {
+        // 连续两帧无新内容才判定到底（单帧可能是滚动未稳定）
+        L.stall++;
+        if (L.stall >= 2) { toast('已到达内容底部，拼接结束'); finishLongCapture(); return; }
+        updateLongBar();
+        scheduleAutoStep();
+        return;
+      }
+      toast('未检测到新内容，拼接结束'); finishLongCapture(); return;
+    }
     var appendH = res.appendH;
     var out = document.createElement('canvas');
     out.width = acc.width; out.height = acc.height + appendH;
     var octx = out.getContext('2d');
     octx.drawImage(acc, 0, 0);
     octx.drawImage(img, 0, img.height - appendH, img.width, appendH, 0, acc.height, img.width, appendH);
-    L.acc = out; L.frames++;
+    L.acc = out; L.frames++; L.stall = 0;
     updateLongBar();
+    if (L.frames >= 40) { toast('已达最大帧数（40），拼接结束'); finishLongCapture(); return; }
+    if (L.auto) scheduleAutoStep();
+  }
+
+  // ---------- 自动滚动（原生滚轮/翻页键 + 自动捕获循环） ----------
+  function longSpeed() {
+    var el = $('longSpeed');
+    var v = el ? parseInt(el.value, 10) : 3;
+    return (v === 2 || v === 3 || v === 5) ? v : 3;
+  }
+
+  function scheduleAutoStep() {
+    var L = S.long;
+    if (!L || !L.auto) return;
+    var sp = longSpeed();
+    var wait = sp >= 5 ? 300 : (sp >= 3 ? 450 : 700);
+    setTimeout(autoStep, wait);
+  }
+
+  function autoStep() {
+    var L = S.long;
+    if (!L || !L.auto || L.busy) return;
+    // 1) 向区域中心发送一次滚动（光标落到目标窗口上，滚轮直达）
+    window.__tauri__.scrollAt(L.cx, L.cy, longSpeed()).then(function () {
+      if (!S.long || !S.long.auto) return;
+      // 2) 等滚动动画稳定后抓一帧并拼接
+      setTimeout(function () {
+        if (S.long && S.long.auto) captureNextFrame();
+      }, 220);
+    }).catch(function (e) {
+      stopAutoScroll(true);
+      toast('自动滚动不可用（' + e + '），请手动滚动目标窗口后点「捕获下一屏」');
+    });
+  }
+
+  function startAutoScroll() {
+    var L = S.long;
+    if (!L) return;
+    if (L.auto) { stopAutoScroll(); return; }
+    L.auto = true; L.stall = 0;
+    $('longAuto').textContent = '暂停自动';
+    toast('自动长截图开始：请保持目标窗口不动，光标会自动滚动');
+    autoStep();
+  }
+
+  function stopAutoScroll(silent) {
+    var L = S.long;
+    if (L) L.auto = false;
+    try {
+      if (window.__tauri__ && window.__tauri__.endAutoScroll) {
+        window.__tauri__.endAutoScroll().catch(function () {});
+      }
+    } catch (e) {}
+    var b = $('longAuto');
+    if (b) b.textContent = '自动滚动';
+    if (!silent) toast('已暂停自动滚动');
   }
 
   function updateLongBar() {
     var L = S.long;
     if (!L) return;
-    $('longInfo').textContent = '长截图 · 已捕获 ' + L.frames + ' 帧 · 累计 '
+    var info = '长截图 · 已捕获 ' + L.frames + ' 帧 · 累计 '
       + (L.acc ? L.acc.width : 0) + '×' + (L.acc ? L.acc.height : 0);
+    if (L.auto) info += ' · 自动中';
+    $('longInfo').textContent = info;
+  }
+
+  // 退出长截图浮动控制条：恢复标注工具栏，并（桌面版）复位主窗口
+  function leaveLongMode() {
+    document.body.classList.remove('longmode');
+    toolbar.style.display = '';
+    if (typeof exitCaptureMode === 'function') {
+      exitCaptureMode();   // 桥接层注入：复位窗口尺寸并退出全屏态
+    } else if (window.__tauri__ && window.__tauri__.resetWindow) {
+      window.__tauri__.resetWindow().catch(function () {});
+    }
   }
 
   function finishLongCapture() {
     var L = S.long;
+    if (L && L.auto) stopAutoScroll(true);
     hideLongBar();
     S.long = null;
+    leaveLongMode();
     if (L && L.acc) {
       var acc = L.acc, frames = L.frames;
       loadImage(acc);
@@ -1511,8 +1620,11 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   }
 
   function cancelLongCapture() {
+    var L = S.long;
+    if (L && L.auto) stopAutoScroll(true);
     hideLongBar();
     S.long = null;
+    leaveLongMode();
     toast('已取消长截图');
     setStatus('待机中', false);
   }
@@ -1520,6 +1632,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   function hideLongBar() { $('longBar').classList.add('hidden'); }
 
   $('btnLong').addEventListener('click', startLongCapture);
+  $('longAuto').addEventListener('click', startAutoScroll);
   $('longNext').addEventListener('click', captureNextFrame);
   $('longDone').addEventListener('click', finishLongCapture);
   $('longCancel').addEventListener('click', cancelLongCapture);
@@ -1603,6 +1716,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); doCopy(); return; }
     if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); return; }
     if (e.key === 'Escape') {
+      if (S.long) { cancelLongCapture(); return; }
       if (!$('smartModal').classList.contains('hidden')) { hideSmart(); return; }
       if (textInput.style.display === 'block') { commitTextInput(); return; }
       if (IS_TAURI && document.body.classList.contains('capturing')) { exitCaptureMode(); return; }
@@ -1933,6 +2047,17 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   }
 
   function enterCaptureMode(shot) {
+    // 热键打断长截图：安静清理会话（不碰窗口几何，随后 Rust 会铺满覆盖层）
+    if (S.long) {
+      var wasAuto = S.long.auto;
+      S.long = null;
+      hideLongBar();
+      document.body.classList.remove('longmode');
+      toolbar.style.display = '';
+      if (wasAuto) {
+        try { window.__tauri__.endAutoScroll().catch(function () {}); } catch (e) {}
+      }
+    }
     document.body.classList.add('capturing');
     S.capture = shot;   // 记录物理原点，供长截图把选区换算成屏幕物理坐标
     var img = new Image();
@@ -1989,6 +2114,18 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       },
       captureRegion: function (x, y, w, h) {
         return T.core.invoke('capture_region', { x: x, y: y, w: w, h: h });
+      },
+      enterLongMode: function (w, h, cx, cy) {
+        return T.core.invoke('enter_long_mode', { w: w, h: h, cx: cx, cy: cy });
+      },
+      scrollAt: function (x, y, notches) {
+        return T.core.invoke('scroll_at', { x: x, y: y, notches: notches });
+      },
+      endAutoScroll: function () {
+        return T.core.invoke('end_auto_scroll');
+      },
+      resetWindow: function () {
+        return T.core.invoke('reset_window');
       },
       setCaptureMode: function (mode) {
         return T.core.invoke('set_capture_mode', { mode: mode });

@@ -49,18 +49,53 @@ pub fn set_capture_mode(state: tauri::State<'_, CaptureMode>, mode: String) -> R
 }
 
 /// 长截图：按物理坐标裁剪捕获指定区域，返回 data URL 供前端逐帧拼接。
-/// 会短暂隐藏主窗口以避免其进入画面，返回前恢复显示。
+/// 仅当主窗与捕获区域重叠时才短暂隐藏（长截图浮动控制条多数情况不重叠，避免逐帧闪烁）。
 #[tauri::command]
 pub fn capture_region(app: AppHandle, x: i32, y: i32, w: i32, h: i32) -> Result<crate::capture::Shot, String> {
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.hide();
-        std::thread::sleep(std::time::Duration::from_millis(90));
+    let win = app.get_webview_window("main");
+    let overlap = win.as_ref().map_or(true, |wd| {
+        match wd.outer_position().ok().zip(wd.outer_size().ok()) {
+            Some((p, s)) => {
+                let ix = (x + w).min(p.x + s.width as i32) - x.max(p.x);
+                let iy = (y + h).min(p.y + s.height as i32) - y.max(p.y);
+                ix > 0 && iy > 0
+            }
+            None => true,
+        }
+    });
+    if overlap {
+        if let Some(wd) = &win {
+            let _ = wd.hide();
+            std::thread::sleep(std::time::Duration::from_millis(90));
+        }
     }
     let result = capture::capture_region_png(&app, x, y, w, h);
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.show();
+    if overlap {
+        if let Some(wd) = &win {
+            let _ = wd.show();
+        }
     }
     result
+}
+
+/// 长截图模式：把主窗口缩小为底部居中的浮动控制条，露出目标窗口供滚动。
+/// (cx, cy) 为捕获区域中心的物理坐标，用于选择所在显示器。
+#[tauri::command]
+pub fn enter_long_mode(app: AppHandle, w: f64, h: f64, cx: i32, cy: i32) -> Result<(), String> {
+    capture::enter_long_mode(&app, w, h, cx, cy)
+}
+
+/// 长截图自动滚动：向区域中心发送一次「向下翻页」（Windows 滚轮 / macOS Page Down）。
+#[tauri::command]
+pub fn scroll_at(app: AppHandle, x: i32, y: i32, notches: i32) -> Result<(), String> {
+    capture::scroll_at(&app, x, y, notches)
+}
+
+/// 结束自动滚动：还原光标位置（Windows）。
+#[tauri::command]
+pub fn end_auto_scroll() -> Result<(), String> {
+    capture::end_auto_scroll();
+    Ok(())
 }
 
 /// 把合成好的 PNG（base64）复制到系统剪贴板，或弹出保存对话框写盘。
