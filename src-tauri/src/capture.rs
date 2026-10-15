@@ -185,6 +185,215 @@ pub fn grab(app: &AppHandle) -> Result<Shot, String> {
     })
 }
 
+/// 以显式物理坐标定位目标显示器（区域捕获 / 窗口捕获用）。
+fn resolve_point(app: &AppHandle, cpx: i32, cpy: i32) -> Target {
+    let mut t = Target {
+        monitor_index: None,
+        win_x: 0,
+        win_y: 0,
+        scale: 1.0,
+        name: String::from("显示器"),
+    };
+    let win = app.get_webview_window("main");
+    let monitors: Vec<tauri::Monitor> = win
+        .as_ref()
+        .and_then(|w| w.available_monitors().ok())
+        .unwrap_or_default();
+    let cx = cpx as f64;
+    let cy = cpy as f64;
+    let chosen = monitors
+        .iter()
+        .find(|m| {
+            let p = m.position();
+            let s = m.size();
+            cx >= p.x as f64
+                && cx < (p.x + s.width as f64)
+                && cy >= p.y as f64
+                && cy < (p.y + s.height as f64)
+        })
+        .or_else(|| monitors.first());
+    if let Some(m) = chosen {
+        t.win_x = m.position().x;
+        t.win_y = m.position().y;
+        t.scale = if m.scale_factor() > 0.0 {
+            m.scale_factor()
+        } else {
+            1.0
+        };
+        t.name = m.name().cloned().unwrap_or_else(|| String::from("显示器"));
+    }
+    let lx = (cpx as f64 / t.scale).round() as i32;
+    let ly = (cpy as f64 / t.scale).round() as i32;
+    if let Ok(hit) = Monitor::from_point(lx, ly) {
+        if let Ok(hit_id) = hit.id() {
+            if let Ok(all) = Monitor::all() {
+                t.monitor_index = all.iter().position(|m| m.id().ok() == Some(hit_id));
+            }
+        }
+    }
+    t
+}
+
+/// 前台窗口矩形（物理屏幕坐标）。Windows 用 user32；其他平台暂不支持，返回 None。
+#[cfg(target_os = "windows")]
+fn front_window_rect() -> Option<(i32, i32, i32, i32)> {
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
+    unsafe {
+        let hwnd: HWND = GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut r: RECT = std::mem::zeroed();
+        if GetWindowRect(hwnd, &mut r) == 0 {
+            return None;
+        }
+        Some((r.left, r.top, r.right - r.left, r.bottom - r.top))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn front_window_rect() -> Option<(i32, i32, i32, i32)> {
+    None
+}
+
+/// 两矩形 (x,y,w,h) 相交面积是否≥前者面积一半（判断前台窗口是否即本应用主窗口）。
+fn rects_overlap(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
+    let (ax, ay, aw, ah) = a;
+    let (bx, by, bw, bh) = b;
+    let ix0 = ax.max(bx);
+    let iy0 = ay.max(by);
+    let ix1 = (ax + aw).min(bx + bw);
+    let iy1 = (ay + ah).min(by + bh);
+    let inter = (ix1 - ix0).max(0) * (iy1 - iy0).max(0);
+    let fa = aw.max(0) * ah.max(0);
+    fa > 0 && inter * 2 >= fa
+}
+
+/// 捕获指定物理矩形区域并裁剪返回（长截图逐帧 / 窗口捕获共用）。
+fn capture_region_image(
+    app: &AppHandle,
+    px: i32,
+    py: i32,
+    w: i32,
+    h: i32,
+) -> Result<image::RgbaImage, String> {
+    let t = resolve_point(app, px + w / 2, py + h / 2);
+    let monitors = Monitor::all().map_err(|e| format!("枚举显示器失败：{e}"))?;
+    if monitors.is_empty() {
+        return Err(String::from("未检测到任何显示器"));
+    }
+    let monitor = monitors.get(t.monitor_index.unwrap_or(0)).unwrap_or(&monitors[0]);
+    let image = monitor.capture_image().map_err(|e| format!("截屏失败：{e}"))?;
+    let (iw, ih) = image.dimensions();
+    let ox = (px - t.win_x).max(0) as u32;
+    let oy = (py - t.win_y).max(0) as u32;
+    if ox >= iw || oy >= ih {
+        return Err(String::from("区域超出屏幕范围"));
+    }
+    let cw = (w.max(0) as u32).min(iw - ox);
+    let ch = (h.max(0) as u32).min(ih - oy);
+    if cw == 0 || ch == 0 {
+        return Err(String::from("区域尺寸非法"));
+    }
+    // 用负偏移把整屏图盖到目标画布上，等效裁剪出 [ox,oy,cw,ch]（屏幕图不透明）
+    let mut out = image::RgbaImage::new(cw, ch);
+    imageops::overlay(&mut out, &image, -(ox as i64), -(oy as i64));
+    Ok(out)
+}
+
+/// 把主窗口铺满到 shot 覆盖的屏幕区域（物理坐标 ÷ 缩放比 = 逻辑坐标）。
+fn place_overlay(app: &AppHandle, shot: &Shot) {
+    if let Some(win) = app.get_webview_window("main") {
+        let scale = if shot.scale > 0.0 { shot.scale } else { 1.0 };
+        let _ = win.set_always_on_top(true);
+        let _ = win.set_position(LogicalPosition::new(shot.x as f64 / scale, shot.y as f64 / scale));
+        let _ = win.set_size(LogicalSize::new(shot.width as f64 / scale, shot.height as f64 / scale));
+    }
+}
+
+/// 捕获前台窗口：抓取后裁剪到前台窗口矩形；若前台窗口就是本应用主窗口或取不到，
+/// 则优雅回退为整屏捕获。结果同样通过 `snap:capture` 事件推送。
+pub fn capture_window_now(app: &AppHandle) -> Result<(), String> {
+    if CAPTURING.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let result = (|| -> Result<(), String> {
+        // 先在隐藏主窗前取前台窗口（热键触发时目标应用在前台）
+        let front = front_window_rect();
+        let main_rect = app.get_webview_window("main").and_then(|w| {
+            let p = w.outer_position().ok()?;
+            let s = w.outer_size().ok()?;
+            Some((p.x, p.y, s.width as i32, s.height as i32))
+        });
+        let target = front.filter(|f| main_rect.map_or(true, |mr| !rects_overlap(*f, mr)));
+
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.hide();
+            std::thread::sleep(std::time::Duration::from_millis(160));
+        }
+
+        let shot = if let Some((x, y, w, h)) = target {
+            let scale = resolve_point(app, x + w / 2, y + h / 2).scale;
+            let img = capture_region_image(app, x, y, w, h)?;
+            let (cw, ch) = img.dimensions();
+            let mut png: Vec<u8> = Vec::new();
+            image::DynamicImage::ImageRgba8(img)
+                .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+                .map_err(|e| format!("PNG 编码失败：{e}"))?;
+            Shot {
+                data_url: format!("data:image/png;base64,{}", STANDARD.encode(&png)),
+                width: cw,
+                height: ch,
+                x,
+                y,
+                monitor: String::from("前台窗口"),
+                scale,
+            }
+        } else {
+            grab(app)?
+        };
+
+        place_overlay(app, &shot);
+        app.emit("snap:capture", &shot)
+            .map_err(|e| format!("事件发送失败：{e}"))?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        CAPTURING.store(false, Ordering::SeqCst);
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.show();
+        }
+    }
+    result
+}
+
+/// 按物理坐标裁剪捕获指定区域（长截图逐帧捕获命令用）。
+pub fn capture_region_png(
+    app: &AppHandle,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+) -> Result<Shot, String> {
+    let img = capture_region_image(app, x, y, w, h)?;
+    let (cw, ch) = img.dimensions();
+    let mut png: Vec<u8> = Vec::new();
+    image::DynamicImage::ImageRgba8(img)
+        .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+        .map_err(|e| format!("PNG 编码失败：{e}"))?;
+    Ok(Shot {
+        data_url: format!("data:image/png;base64,{}", STANDARD.encode(&png)),
+        width: cw,
+        height: ch,
+        x,
+        y,
+        monitor: String::from("区域"),
+        scale: 1.0,
+    })
+}
+
 /// 触发一次完整截屏流程：隐藏主窗口 → 截取光标所在显示器 → 将主窗口铺满该显示器
 /// → 通过事件把画面推给前端。由全局热键、托盘菜单、前端按钮共用。
 pub fn capture_now(app: &AppHandle) -> Result<(), String> {

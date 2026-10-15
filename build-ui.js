@@ -52,13 +52,15 @@ const BRIDGE = `
     var scope = 'screen';
     var sel = document.getElementById('scopeSel');
     if (sel) scope = sel.value || 'screen';
-    var cmd = scope === 'all' ? 'grab_all_screens' : 'grab_screen';
-    toast('正在捕获' + (scope === 'all' ? '全部显示器' : '屏幕') + '…');
+    var cmd = scope === 'all' ? 'grab_all_screens' : (scope === 'window' ? 'grab_window' : 'grab_screen');
+    var label = scope === 'all' ? '全部显示器' : (scope === 'window' ? '前台窗口' : '屏幕');
+    toast('正在捕获' + label + '…');
     T.core.invoke(cmd).catch(function (e) { toast('捕获失败：' + e); });
   }
 
   function enterCaptureMode(shot) {
     document.body.classList.add('capturing');
+    S.capture = shot;   // 记录物理原点，供长截图把选区换算成屏幕物理坐标
     var img = new Image();
     img.onload = function () {
       canvas.width = img.naturalWidth;
@@ -110,8 +112,20 @@ const BRIDGE = `
       },
       pinImage: function (bytes) {
         return T.core.invoke('pin_image', { bytes: bytes });
+      },
+      captureRegion: function (x, y, w, h) {
+        return T.core.invoke('capture_region', { x: x, y: y, w: w, h: h });
+      },
+      setCaptureMode: function (mode) {
+        return T.core.invoke('set_capture_mode', { mode: mode });
       }
     };
+
+    // 「范围」选择器变化时同步截屏模式，供全局热键分流
+    var scopeSelEl = document.getElementById('scopeSel');
+    if (scopeSelEl) scopeSelEl.addEventListener('change', function () {
+      T.core.invoke('set_capture_mode', { mode: this.value }).catch(function () {});
+    });
 
     T.event.listen('snap:capture', function (ev) { enterCaptureMode(ev.payload); });
     setStatus('待机中 · 热键 Ctrl/⌘+Shift+A 截图', false);

@@ -2,6 +2,7 @@ mod capture;
 mod commands;
 mod tray;
 
+use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,7 +15,17 @@ pub fn run() {
                 .expect("无效的全局快捷键")
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        if let Err(e) = capture::capture_now(app) {
+                        // 按前端同步的截屏模式分流：整屏 / 多屏拼接 / 前台窗口
+                        let mode = app
+                            .try_state::<commands::CaptureMode>()
+                            .map(|s| s.0.lock().unwrap().clone())
+                            .unwrap_or_else(|| "screen".to_string());
+                        let r = match mode.as_str() {
+                            "all" => capture::capture_all_now(app),
+                            "window" => capture::capture_window_now(app),
+                            _ => capture::capture_now(app),
+                        };
+                        if let Err(e) = r {
                             eprintln!("全局热键截屏失败：{e}");
                         }
                     }
@@ -22,6 +33,7 @@ pub fn run() {
                 .build(),
         )
         .manage(commands::PinImages::default())
+        .manage(commands::CaptureMode::default())
         .setup(|app| {
             tray::build_tray(app)?;
             Ok(())
@@ -29,6 +41,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::grab_screen,
             commands::grab_all_screens,
+            commands::grab_window,
+            commands::capture_region,
+            commands::set_capture_mode,
             commands::export_capture,
             commands::reset_window,
             commands::save_image_to_folder,

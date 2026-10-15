@@ -26,6 +26,43 @@ pub fn grab_all_screens(app: AppHandle) -> Result<(), String> {
     capture::capture_all_now(&app)
 }
 
+/// 触发前台窗口截屏：抓取后裁剪到前台窗口矩形；取不到则回退整屏。
+#[tauri::command]
+pub fn grab_window(app: AppHandle) -> Result<(), String> {
+    capture::capture_window_now(&app)
+}
+
+/// 当前截屏模式（供全局热键分流）："screen" | "all" | "window"。
+#[derive(Default)]
+pub struct CaptureMode(pub std::sync::Mutex<String>);
+
+/// 前端切换「范围」选择器时同步截屏模式，供全局热键分流使用。
+#[tauri::command]
+pub fn set_capture_mode(state: tauri::State<'_, CaptureMode>, mode: String) -> Result<(), String> {
+    let m = match mode.as_str() {
+        "all" => "all",
+        "window" => "window",
+        _ => "screen",
+    };
+    *state.0.lock().unwrap() = m.to_string();
+    Ok(())
+}
+
+/// 长截图：按物理坐标裁剪捕获指定区域，返回 data URL 供前端逐帧拼接。
+/// 会短暂隐藏主窗口以避免其进入画面，返回前恢复显示。
+#[tauri::command]
+pub fn capture_region(app: AppHandle, x: i32, y: i32, w: i32, h: i32) -> Result<crate::capture::Shot, String> {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.hide();
+        std::thread::sleep(std::time::Duration::from_millis(90));
+    }
+    let result = capture::capture_region_png(&app, x, y, w, h);
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+    }
+    result
+}
+
 /// 把合成好的 PNG（base64）复制到系统剪贴板，或弹出保存对话框写盘。
 #[tauri::command]
 pub fn export_capture(

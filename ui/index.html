@@ -256,6 +256,16 @@ kbd{
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast .bar{width:3px;height:16px;border-radius:2px;background:linear-gradient(180deg,var(--a1),var(--a2))}
 
+/* ---------- 长截图控制条 ---------- */
+.longbar{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:210;display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:14px;background:rgba(12,15,24,.96);border:1px solid var(--line-2);box-shadow:0 24px 60px -22px #000;color:#e9edf8;font-size:13px;backdrop-filter:blur(14px)}
+.longbar.hidden{display:none}
+.longInfo{white-space:nowrap;opacity:.9}
+.longBtns{display:flex;gap:8px}
+.lbtn{border:1px solid var(--line-2);background:rgba(255,255,255,.06);color:inherit;padding:6px 12px;border-radius:9px;font-size:13px;cursor:pointer;white-space:nowrap}
+.lbtn:hover{background:rgba(255,255,255,.12)}
+.lbtn.primary{background:linear-gradient(135deg,var(--a1),var(--a2));border:none;color:#0b0e16;font-weight:650}
+.lbtn.ghost{background:transparent;color:var(--dim)}
+
 /* ---------- 智能工具弹窗 ---------- */
 .modal{position:fixed;inset:0;z-index:300;display:grid;place-items:center;background:rgba(4,6,14,.62);backdrop-filter:blur(6px)}
 .modalCard{width:min(520px,92vw);max-height:84vh;overflow:auto;border-radius:18px;border:1px solid var(--line-2);
@@ -320,6 +330,7 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       <select id="scopeSel" class="fsel" style="padding:2px 4px;max-width:104px">
         <option value="screen">当前屏幕</option>
         <option value="all">所有显示器</option>
+        <option value="window">前台窗口</option>
       </select>
     </div>
     <button class="btn primary" id="btnCapture">
@@ -435,6 +446,8 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.4"/><circle cx="12" cy="12.5" r="3.3"/><path d="M9 3.5h6"/></svg></button>
           <button class="tool" id="btnPin" data-tip="钉到桌面 (钉图)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5l-4 8a2 2 0 0 0 2 3h8a2 2 0 0 0 2-3l-4-8V3"/><path d="M12 11v9"/></svg></button>
+          <button class="tool" id="btnLong" data-tip="滚动长截图（桌面版）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16"/><path d="M8 8l4-4 4 4"/><path d="M8 16l4 4 4-4"/><path d="M4 20h16"/></svg></button>
         </div>
       </div>
 
@@ -469,6 +482,15 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
   </div>
 </div>
 
+<div class="longbar hidden" id="longBar">
+  <span class="longInfo" id="longInfo">长截图 · 已捕获 0 帧</span>
+  <span class="longBtns">
+    <button class="lbtn primary" id="longNext">捕获下一屏</button>
+    <button class="lbtn" id="longDone">完成拼接</button>
+    <button class="lbtn ghost" id="longCancel">取消</button>
+  </span>
+</div>
+
 <script>
 (function () {
   'use strict';
@@ -501,7 +523,9 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     drag: null,
     badge: 0,
     dragMode: null,       // 'select' | 'annotate' | 'moveSel'
-    selectedIdx: -1       // 当前选中的标注（用于编辑/删除）
+    selectedIdx: -1,      // 当前选中的标注（用于编辑/删除）
+    capture: null,        // 最近一次截屏的 Shot（含 x/y 物理原点），用于长截图换算物理坐标
+    long: null            // 长截图会话 { region, acc, frames, busy }
   };
 
   var COLORS = ['#ff3b5c', '#ff8a3d', '#ffd23d', '#31d99c', '#22d3ee', '#5b8cff', '#a877ff', '#ffffff', '#111318'];
@@ -1362,6 +1386,144 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     setStatus('已取消选区', false);
   });
 
+  // ============ 滚动长截图（桌面版） ============
+  function isTauri() {
+    return typeof window.__tauri__ !== 'undefined' && !!window.__tauri__.captureRegion;
+  }
+
+  // 基于 ImageData 的滚动量检测：内容下滚 s 像素时 fr[y]==acc[y+s]，新增内容为 fr 末尾 appendH 行。
+  // acc/fr: {data:Uint8ClampedArray, w, h}（RGBA）。返回 {scroll, appendH} 或 null（无滚动/画面剧变）。
+  function findScrollOffset(acc, fr) {
+    var aw = acc.w, ah = acc.h, fw = fr.w, fh = fr.h;
+    if (aw !== fw || ah === 0 || fh === 0) return null;
+    var maxOverlap = Math.min(ah, fh);
+    var minOverlap = Math.max(16, Math.round(fh * 0.12));
+    if (maxOverlap <= minOverlap) return { scroll: ah, appendH: fh };
+    var rowStep = Math.max(1, Math.round(fh / 200));
+    var colStep = Math.max(1, Math.round(aw / 120));
+    var best = null;
+    for (var L = maxOverlap; L >= minOverlap; L -= rowStep) {
+      var s = ah - L, diff = 0, cnt = 0;
+      for (var y = 0; y < L; y += rowStep) {
+        var ayBase = (s + y) * aw, fyBase = y * fw;
+        for (var x = 0; x < aw; x += colStep) {
+          var ai = (ayBase + x) * 4, fi = (fyBase + x) * 4;
+          diff += Math.abs(acc.data[ai] - fr.data[fi])
+                + Math.abs(acc.data[ai + 1] - fr.data[fi + 1])
+                + Math.abs(acc.data[ai + 2] - fr.data[fi + 2]);
+          cnt++;
+        }
+      }
+      var score = cnt ? diff / cnt : 1e9;
+      if (!best || score < best.score) best = { score: score, scroll: s, appendH: fh - L };
+      if (score < 3) break;
+    }
+    if (best && best.score < 14) return { scroll: best.scroll, appendH: best.appendH };
+    return null;
+  }
+
+  function startLongCapture() {
+    if (!S.sel) { toast('请先框选要长截图的区域'); return; }
+    if (!isTauri()) { toast('滚动长截图为桌面版功能（网页版暂不支持）'); return; }
+    var cap = S.capture || { x: 0, y: 0 };
+    S.long = {
+      region: {
+        x: Math.round(cap.x + S.sel.x),
+        y: Math.round(cap.y + S.sel.y),
+        w: Math.round(S.sel.w),
+        h: Math.round(S.sel.h)
+      },
+      acc: null, frames: 0, busy: false
+    };
+    toolbar.style.display = 'none';
+    hideSelBar();
+    selBox.style.display = 'none';
+    updateLongBar();
+    $('longBar').classList.remove('hidden');
+    toast('已进入长截图：滚动目标内容后点「捕获下一屏」，到底后点「完成拼接」');
+    captureNextFrame();
+  }
+
+  function captureNextFrame() {
+    if (!S.long || S.long.busy) return;
+    S.long.busy = true;
+    var r = S.long.region;
+    window.__tauri__.captureRegion(r.x, r.y, r.w, r.h).then(function (shot) {
+      var img = new Image();
+      img.onload = function () { S.long.busy = false; appendFrame(img); };
+      img.onerror = function () { S.long.busy = false; toast('帧加载失败'); };
+      img.src = shot.dataUrl;
+    }).catch(function (e) { S.long.busy = false; toast('捕获失败：' + e); });
+  }
+
+  function appendFrame(img) {
+    var L = S.long;
+    if (!L) return;
+    if (!L.acc) {
+      var c0 = document.createElement('canvas');
+      c0.width = img.width; c0.height = img.height;
+      c0.getContext('2d').drawImage(img, 0, 0);
+      L.acc = c0; L.frames = 1;
+      updateLongBar();
+      return;
+    }
+    var acc = L.acc;
+    if (img.width !== acc.width) { toast('画面宽度变化，拼接结束'); finishLongCapture(); return; }
+    var accData = acc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, acc.width, acc.height).data;
+    var frC = document.createElement('canvas');
+    frC.width = img.width; frC.height = img.height;
+    var frCtx = frC.getContext('2d', { willReadFrequently: true });
+    frCtx.drawImage(img, 0, 0);
+    var frData = frCtx.getImageData(0, 0, img.width, img.height).data;
+    var res = findScrollOffset(
+      { data: accData, w: acc.width, h: acc.height },
+      { data: frData, w: img.width, h: img.height }
+    );
+    if (!res || res.appendH <= 0) { toast('未检测到新内容，拼接结束'); finishLongCapture(); return; }
+    var appendH = res.appendH;
+    var out = document.createElement('canvas');
+    out.width = acc.width; out.height = acc.height + appendH;
+    var octx = out.getContext('2d');
+    octx.drawImage(acc, 0, 0);
+    octx.drawImage(img, 0, img.height - appendH, img.width, appendH, 0, acc.height, img.width, appendH);
+    L.acc = out; L.frames++;
+    updateLongBar();
+  }
+
+  function updateLongBar() {
+    var L = S.long;
+    if (!L) return;
+    $('longInfo').textContent = '长截图 · 已捕获 ' + L.frames + ' 帧 · 累计 '
+      + (L.acc ? L.acc.width : 0) + '×' + (L.acc ? L.acc.height : 0);
+  }
+
+  function finishLongCapture() {
+    var L = S.long;
+    hideLongBar();
+    S.long = null;
+    if (L && L.acc) {
+      var acc = L.acc, frames = L.frames;
+      loadImage(acc);
+      toast('长截图完成：' + acc.width + '×' + acc.height + '（' + frames + ' 帧）');
+    } else {
+      setStatus('待机中', false);
+    }
+  }
+
+  function cancelLongCapture() {
+    hideLongBar();
+    S.long = null;
+    toast('已取消长截图');
+    setStatus('待机中', false);
+  }
+
+  function hideLongBar() { $('longBar').classList.add('hidden'); }
+
+  $('btnLong').addEventListener('click', startLongCapture);
+  $('longNext').addEventListener('click', captureNextFrame);
+  $('longDone').addEventListener('click', finishLongCapture);
+  $('longCancel').addEventListener('click', cancelLongCapture);
+
   // ============ 顶部按钮 ============
   function startCaptureWithDelay() {
     var d = parseInt($('delaySel').value, 10) || 0;
@@ -1764,13 +1926,15 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
     var scope = 'screen';
     var sel = document.getElementById('scopeSel');
     if (sel) scope = sel.value || 'screen';
-    var cmd = scope === 'all' ? 'grab_all_screens' : 'grab_screen';
-    toast('正在捕获' + (scope === 'all' ? '全部显示器' : '屏幕') + '…');
+    var cmd = scope === 'all' ? 'grab_all_screens' : (scope === 'window' ? 'grab_window' : 'grab_screen');
+    var label = scope === 'all' ? '全部显示器' : (scope === 'window' ? '前台窗口' : '屏幕');
+    toast('正在捕获' + label + '…');
     T.core.invoke(cmd).catch(function (e) { toast('捕获失败：' + e); });
   }
 
   function enterCaptureMode(shot) {
     document.body.classList.add('capturing');
+    S.capture = shot;   // 记录物理原点，供长截图把选区换算成屏幕物理坐标
     var img = new Image();
     img.onload = function () {
       canvas.width = img.naturalWidth;
@@ -1822,8 +1986,20 @@ body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
       },
       pinImage: function (bytes) {
         return T.core.invoke('pin_image', { bytes: bytes });
+      },
+      captureRegion: function (x, y, w, h) {
+        return T.core.invoke('capture_region', { x: x, y: y, w: w, h: h });
+      },
+      setCaptureMode: function (mode) {
+        return T.core.invoke('set_capture_mode', { mode: mode });
       }
     };
+
+    // 「范围」选择器变化时同步截屏模式，供全局热键分流
+    var scopeSelEl = document.getElementById('scopeSel');
+    if (scopeSelEl) scopeSelEl.addEventListener('change', function () {
+      T.core.invoke('set_capture_mode', { mode: this.value }).catch(function () {});
+    });
 
     T.event.listen('snap:capture', function (ev) { enterCaptureMode(ev.payload); });
     setStatus('待机中 · 热键 Ctrl/⌘+Shift+A 截图', false);
