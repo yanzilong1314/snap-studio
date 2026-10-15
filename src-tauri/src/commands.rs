@@ -19,6 +19,13 @@ pub fn grab_screen(app: AppHandle) -> Result<(), String> {
     capture::capture_now(&app)
 }
 
+/// 触发多屏拼接截屏：隐藏主窗口 → 抓取全部显示器并拼成一张大图 →
+/// 铺满并集区域 → 推事件给前端。结果同样通过 `snap:capture` 事件送达。
+#[tauri::command]
+pub fn grab_all_screens(app: AppHandle) -> Result<(), String> {
+    capture::capture_all_now(&app)
+}
+
 /// 把合成好的 PNG（base64）复制到系统剪贴板，或弹出保存对话框写盘。
 #[tauri::command]
 pub fn export_capture(

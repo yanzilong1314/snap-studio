@@ -9,7 +9,7 @@
 //! `from_point` 选择显示器，两侧口径保持一致。
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use image::ImageFormat;
+use image::{ImageFormat, imageops};
 use serde::Serialize;
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -202,6 +202,137 @@ pub fn capture_now(app: &AppHandle) -> Result<(), String> {
         let shot = grab(app)?;
 
         // 把主窗口几何铺满整块显示器（用逻辑坐标，由 Tauri 乘以缩放比得到物理像素）
+        if let Some(win) = app.get_webview_window("main") {
+            let scale = if shot.scale > 0.0 { shot.scale } else { 1.0 };
+            let _ = win.set_always_on_top(true);
+            let _ = win.set_position(LogicalPosition::new(
+                shot.x as f64 / scale,
+                shot.y as f64 / scale,
+            ));
+            let _ = win.set_size(LogicalSize::new(
+                shot.width as f64 / scale,
+                shot.height as f64 / scale,
+            ));
+        }
+
+        app.emit("snap:capture", &shot)
+            .map_err(|e| format!("事件发送失败：{e}"))?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        CAPTURING.store(false, Ordering::SeqCst);
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.show();
+        }
+    }
+    result
+}
+
+/// 抓取**全部显示器**并拼接成一张大图（多屏拼接）。
+///
+/// 以 Tauri 提供的物理坐标计算所有显示器的并集矩形，对每块屏用其中心点的
+/// 逻辑坐标交给 xcap 定位并整屏捕获，再按物理偏移贴到同一张画布上。
+pub fn grab_all(app: &AppHandle) -> Result<Shot, String> {
+    let win = app.get_webview_window("main");
+    let monitors: Vec<tauri::Monitor> = win
+        .as_ref()
+        .and_then(|w| w.available_monitors().ok())
+        .unwrap_or_default();
+    if monitors.is_empty() {
+        return Err(String::from("未检测到任何显示器"));
+    }
+
+    // 计算所有显示器的物理并集矩形，并逐一抓取
+    let mut min_x = i32::MAX;
+    let mut min_y = i32::MAX;
+    let mut max_x = i32::MIN;
+    let mut max_y = i32::MIN;
+    struct Cap {
+        img: image::RgbaImage,
+        x: i32,
+        y: i32,
+    }
+    let mut caps: Vec<Cap> = Vec::with_capacity(monitors.len());
+    let mut window_scale = 1.0f64;
+
+    for (i, m) in monitors.iter().enumerate() {
+        let p = m.position();
+        let s = m.size();
+        let px = p.x;
+        let py = p.y;
+        let pw = s.width as i32;
+        let ph = s.height as i32;
+        min_x = min_x.min(px);
+        min_y = min_y.min(py);
+        max_x = max_x.max(px + pw);
+        max_y = max_y.max(py + ph);
+
+        let scale = if m.scale_factor() > 0.0 {
+            m.scale_factor()
+        } else {
+            1.0
+        };
+        // 以第一块屏（含并集左上角）的缩放作为覆盖窗口缩放基准
+        if i == 0 {
+            window_scale = scale;
+        }
+
+        // 用屏幕中心的逻辑坐标在 xcap 中定位同一块显示器
+        let cx = ((px + pw / 2) as f64 / scale).round() as i32;
+        let cy = ((py + ph / 2) as f64 / scale).round() as i32;
+        let xm = Monitor::from_point(cx, cy).map_err(|e| format!("定位显示器失败：{e}"))?;
+        let image = xm.capture_image().map_err(|e| format!("截屏失败：{e}"))?;
+        let (w, h) = image.dimensions();
+        if w == 0 || h == 0 {
+            return Err(String::from("截屏结果为空"));
+        }
+        caps.push(Cap { img: image, x: px, y: py });
+    }
+
+    let union_w = (max_x - min_x) as u32;
+    let union_h = (max_y - min_y) as u32;
+    if union_w == 0 || union_h == 0 {
+        return Err(String::from("显示器并集尺寸非法"));
+    }
+
+    let mut canvas = image::RgbaImage::new(union_w, union_h);
+    for c in &caps {
+        let ox = (c.x - min_x) as i64;
+        let oy = (c.y - min_y) as i64;
+        imageops::overlay(&mut canvas, &c.img, ox, oy);
+    }
+
+    let mut png: Vec<u8> = Vec::new();
+    image::DynamicImage::ImageRgba8(canvas)
+        .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+        .map_err(|e| format!("PNG 编码失败：{e}"))?;
+
+    Ok(Shot {
+        data_url: format!("data:image/png;base64,{}", STANDARD.encode(&png)),
+        width: union_w,
+        height: union_h,
+        x: min_x,
+        y: min_y,
+        monitor: String::from("全部显示器"),
+        scale: window_scale,
+    })
+}
+
+/// 触发多屏拼接截屏流程（逻辑同 `capture_now`，但抓取全部显示器）。
+pub fn capture_all_now(app: &AppHandle) -> Result<(), String> {
+    if CAPTURING.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let result = (|| -> Result<(), String> {
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.hide();
+            std::thread::sleep(std::time::Duration::from_millis(160));
+        }
+
+        let shot = grab_all(app)?;
+
         if let Some(win) = app.get_webview_window("main") {
             let scale = if shot.scale > 0.0 { shot.scale } else { 1.0 };
             let _ = win.set_always_on_top(true);

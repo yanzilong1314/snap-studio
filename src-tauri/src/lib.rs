@@ -28,6 +28,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::grab_screen,
+            commands::grab_all_screens,
             commands::export_capture,
             commands::reset_window,
             commands::save_image_to_folder,

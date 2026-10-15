@@ -13,7 +13,7 @@ body.capturing .app{max-width:none;padding:0;gap:0}
 body.capturing .topbar,body.capturing .hints{display:none}
 body.capturing .stage{border:none;border-radius:0;padding:0;min-height:100vh}
 body.capturing .boardwrap{position:fixed;inset:0;display:block!important;border-radius:0;box-shadow:none;background:#000}
-body.capturing #displayCanvas{max-width:100vw!important;max-height:100vh!important;width:100vw!important;height:100vh!important;border-radius:0}
+body.capturing #displayCanvas{max-width:100vw!important;max-height:100vh!important;width:auto!important;height:auto!important;border-radius:0}
 body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
 `;
 
@@ -49,8 +49,12 @@ const BRIDGE = `
   var T = IS_TAURI ? window.__TAURI__ : null;
 
   function startTauriCapture() {
-    toast('正在捕获屏幕…');
-    T.core.invoke('grab_screen').catch(function (e) { toast('捕获失败：' + e); });
+    var scope = 'screen';
+    var sel = document.getElementById('scopeSel');
+    if (sel) scope = sel.value || 'screen';
+    var cmd = scope === 'all' ? 'grab_all_screens' : 'grab_screen';
+    toast('正在捕获' + (scope === 'all' ? '全部显示器' : '屏幕') + '…');
+    T.core.invoke(cmd).catch(function (e) { toast('捕获失败：' + e); });
   }
 
   function enterCaptureMode(shot) {
