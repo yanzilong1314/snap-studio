@@ -1,7 +1,7 @@
 //! 前端调用的 Tauri 命令。
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use tauri::{AppHandle, LogicalSize};
+use tauri::{AppHandle, LogicalSize, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::capture;
@@ -26,7 +26,8 @@ pub fn export_capture(
 
     if action == "copy" {
         let img = tauri::image::Image::from_bytes(&bytes)
-            .map_err(|e| format!("构造图像失败：{e}"))?;
+            .map_err(|e| format!("构造图像失败：{e}"))?
+            .to_owned();
         app.clipboard()
             .write_image(&img)
             .map_err(|e| format!("写入剪贴板失败：{e}"))?;
