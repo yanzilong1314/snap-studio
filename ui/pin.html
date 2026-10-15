@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>钉图</title>
+<style>
+  html, body { margin:0; padding:0; background:transparent; overflow:hidden; }
+  img { display:block; width:100vw; height:100vh; object-fit:contain; cursor:move; -webkit-user-drag:none; user-select:none; }
+  #hint {
+    position:fixed; right:8px; bottom:8px; font:11px sans-serif; color:#fff;
+    background:rgba(0,0,0,.55); padding:3px 8px; border-radius:8px;
+    pointer-events:none; opacity:0; transition:opacity .2s;
+  }
+  body:hover #hint { opacity:.95; }
+</style>
+</head>
+<body>
+<img id="pic" alt="钉图">
+<div id="hint">拖动移动 · 双击关闭</div>
+<script>
+  (function () {
+    var T = window.__TAURI__;
+    var win = T.window.getCurrentWindow();
+    // label 可能是属性也可能是方法，做兼容
+    var label = (typeof win.label === 'string') ? win.label
+              : (typeof win.label === 'function' ? win.label() : '');
+
+    T.core.invoke('get_pin_image', { label: label })
+      .then(function (b64) {
+        document.getElementById('pic').src = 'data:image/png;base64,' + b64;
+      })
+      .catch(function (e) { console.error('取钉图失败', e); });
+
+    var img = document.getElementById('pic');
+    img.addEventListener('mousedown', function () { try { win.startDragging(); } catch (e) {} });
+    document.body.addEventListener('dblclick', function () { try { win.close(); } catch (e) {} });
+  })();
+</script>
+</body>
+</html>

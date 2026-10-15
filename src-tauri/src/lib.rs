@@ -21,6 +21,7 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(commands::PinImages::default())
         .setup(|app| {
             tray::build_tray(app)?;
             Ok(())
@@ -31,6 +32,7 @@ pub fn run() {
             commands::reset_window,
             commands::save_image_to_folder,
             commands::pin_image,
+            commands::get_pin_image,
             commands::clear_pins,
         ])
         .run(tauri::generate_context!())

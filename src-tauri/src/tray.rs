@@ -1,7 +1,6 @@
 //! 系统托盘：菜单 + 点击图标唤起截屏。
 
 use tauri::{
-    image::Image,
     menu::{Menu, MenuItem, MenuEvent},
     tray::{TrayIconBuilder, TrayIconEvent},
     App, Manager,

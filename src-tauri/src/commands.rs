@@ -1,10 +1,16 @@
 //! 前端调用的 Tauri 命令。
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use tauri::{AppHandle, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::capture;
+
+/// 钉图窗口待显示的图片（base64），按窗口标签暂存，页面加载后取走。
+#[derive(Default)]
+pub struct PinImages(pub Mutex<HashMap<String, String>>);
 
 /// 触发一次截屏（隐藏主窗口 → 截屏 → 铺满显示器 → 推事件给前端）。
 /// 前端无需关心返回值，截屏结果通过 `snap:capture` 事件送达。
@@ -94,34 +100,27 @@ fn png_dims(bytes: &[u8]) -> Option<(u32, u32)> {
 
 /// 钉图：把一张图作为透明、置顶、无边框、可拖动的独立窗口钉在桌面上。
 /// 使用有限窗口标签池 pin-0..pin-15（见 capabilities/pins.json 授权）。
+/// 图片 base64 暂存在 PinImages 中，由 pin.html 加载后取走。
 #[tauri::command]
 pub fn pin_image(app: AppHandle, bytes: Vec<u8>) -> Result<String, String> {
     let (w, h) = png_dims(&bytes).unwrap_or((480, 320));
     let scale = (520.0 / (w.max(h) as f64)).min(1.0);
     let (dw, dh) = (w as f64 * scale, h as f64 * scale);
 
-    let data_url = format!("data:image/png;base64,{}", STANDARD.encode(&bytes));
-    let html = format!(
-        "<!doctype html><html><head><meta charset='utf-8'>\
-<style>html,body{{margin:0;background:transparent;overflow:hidden}}\
-img{{display:block;width:100%;height:100%;object-fit:contain;cursor:move}}\
-#hint{{position:fixed;right:8px;bottom:8px;font:11px sans-serif;color:#fff;\
-background:rgba(0,0,0,.55);padding:3px 8px;border-radius:8px;pointer-events:none;opacity:0;transition:opacity .2s}}\
-body:hover #hint{{opacity:.95}}</style></head>\
-<body><img src='{}'><div id='hint'>拖动移动 · 双击关闭</div>\
-<script>var w=window.__TAURI__.window.getCurrentWindow();\
-var img=document.querySelector('img');\
-img.addEventListener('mousedown',function(e){{w.startDragging();}});\
-document.body.addEventListener('dblclick',function(){{w.close();}});\
-</script></body></html>",
-        data_url
-    );
-
+    // 选取空闲标签
     let existing: Vec<String> = app
         .webview_windows()
         .values()
         .map(|w| w.label().to_string())
         .collect();
+
+    // 清理已关闭窗口但残留的暂存图片，避免标签池被占满
+    if let Some(store) = app.try_state::<PinImages>() {
+        let mut map = store.0.lock().unwrap();
+        let alive: std::collections::HashSet<String> = existing.iter().cloned().collect();
+        map.retain(|k, _| alive.contains(k));
+    }
+
     let mut label: Option<String> = None;
     for i in 0..16u32 {
         let l = format!("pin-{}", i);
@@ -132,9 +131,13 @@ document.body.addEventListener('dblclick',function(){{w.close();}});\
     }
     let label = label.ok_or_else(|| "最多同时钉 16 张，请先在托盘清除钉图".to_string())?;
 
-    let doc_url = format!("data:text/html;base64,{}", STANDARD.encode(html.as_bytes()));
+    // 暂存图片 base64，等待 pin.html 加载后取走（取走即删除，避免堆积）
+    let b64 = STANDARD.encode(&bytes);
+    if let Some(store) = app.try_state::<PinImages>() {
+        store.0.lock().unwrap().insert(label.clone(), b64);
+    }
 
-    let builder = WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::Web(doc_url))
+    let builder = WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::App("pin.html".into()))
         .title("钉图")
         .transparent(true)
         .decorations(false)
@@ -152,8 +155,32 @@ document.body.addEventListener('dblclick',function(){{w.close();}});\
     }
 }
 
+/// 钉图窗口（pin.html）加载时调用，取走对应标签暂存的图片 base64。
+#[tauri::command]
+pub fn get_pin_image(app: AppHandle, label: String) -> Result<String, String> {
+    let store = app
+        .try_state::<PinImages>()
+        .ok_or_else(|| "钉图状态未初始化".to_string())?;
+    let mut map = store.0.lock().unwrap();
+    map.remove(&label)
+        .ok_or_else(|| "图片已取走或窗口标签无效".to_string())
+}
+
 /// 关闭所有钉图窗口。
 pub fn clear_pins_impl(app: &AppHandle) -> usize {
+    // 同时清理暂存图片，防止标签池被残留占满
+    if let Some(store) = app.try_state::<PinImages>() {
+        let mut map = store.0.lock().unwrap();
+        let keys: Vec<String> = map
+            .keys()
+            .cloned()
+            .filter(|k| k.starts_with("pin-"))
+            .collect();
+        for k in keys {
+            map.remove(&k);
+        }
+    }
+
     let labels: Vec<String> = app
         .webview_windows()
         .values()
