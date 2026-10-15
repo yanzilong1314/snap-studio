@@ -674,7 +674,7 @@ static ORIG_CURSOR: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new
 pub fn scroll_at(_app: &AppHandle, x: i32, y: i32, notches: i32) -> Result<(), String> {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOUSEEVENTF_WHEEL, mouse_event};
-    use windows_sys::Win32::UI::Input::Pointer::{GetCursorPos, SetCursorPos};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetCursorPos};
     let n = notches.clamp(-10, 10);
     if n == 0 {
         return Ok(());
@@ -727,7 +727,7 @@ pub fn scroll_at(_app: &AppHandle, _x: i32, _y: i32, _notches: i32) -> Result<()
 pub fn end_auto_scroll() {
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::UI::Input::Pointer::SetCursorPos;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos;
         let orig = {
             let mut guard = ORIG_CURSOR.lock().unwrap();
             guard.take()
