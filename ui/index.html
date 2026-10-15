@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SnapStudio · 屏幕截图标注工作台</title>
+<style>
+:root{
+  --bg:#070910;
+  --panel:rgba(18,22,36,.74);
+  --panel-2:rgba(12,15,26,.9);
+  --line:rgba(255,255,255,.09);
+  --line-2:rgba(255,255,255,.16);
+  --txt:#e9edf8;
+  --dim:#8890a8;
+  --a1:#7c5cff;
+  --a2:#22d3ee;
+  --a3:#ff3d81;
+  --ok:#31d99c;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--txt);
+  font:14px/1.55 "PingFang SC","Microsoft YaHei",-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input{font-family:inherit}
+
+/* ---------- 背景氛围 ---------- */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(100px);opacity:.42;animation:float 20s ease-in-out infinite}
+.orb.a{width:560px;height:560px;background:radial-gradient(circle,#5b3bff,transparent 70%);top:-190px;left:-140px}
+.orb.b{width:520px;height:520px;background:radial-gradient(circle,#00d6ff,transparent 70%);bottom:-220px;right:-120px;animation-delay:-7s}
+.orb.c{width:400px;height:400px;background:radial-gradient(circle,#ff2f7b,transparent 70%);top:38%;left:52%;animation-delay:-13s}
+@keyframes float{
+  0%,100%{transform:translate3d(0,0,0) scale(1)}
+  33%{transform:translate3d(44px,-34px,0) scale(1.08)}
+  66%{transform:translate3d(-34px,28px,0) scale(.94)}
+}
+.gridbg{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(circle at 50% 26%,#000 0%,transparent 76%);
+  mask-image:radial-gradient(circle at 50% 26%,#000 0%,transparent 76%);
+}
+
+/* ---------- 布局 ---------- */
+.app{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:20px 20px 34px;display:flex;flex-direction:column;gap:14px;min-height:100%}
+
+.topbar{
+  display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:18px;
+  border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(20px);
+  box-shadow:0 22px 60px -30px #000;position:relative;overflow:hidden;
+}
+.topbar::after{
+  content:"";position:absolute;left:0;right:0;top:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--a1),var(--a2),transparent);
+  opacity:.75;animation:sheen 5s linear infinite;
+}
+@keyframes sheen{0%{transform:translateX(-40%)}100%{transform:translateX(40%)}}
+.logo{
+  width:40px;height:40px;flex:0 0 40px;border-radius:13px;
+  background:linear-gradient(135deg,var(--a1),var(--a2));
+  display:grid;place-items:center;box-shadow:0 10px 26px -10px var(--a1);
+}
+.brand h1{margin:0;font-size:15.5px;font-weight:650;letter-spacing:.4px;
+  background:linear-gradient(90deg,#fff,#b9c4ff 60%,#8ef0ff);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.brand p{margin:2px 0 0;font-size:11.5px;color:var(--dim);letter-spacing:.2px}
+.spacer{flex:1}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:12px;color:var(--dim);
+  white-space:nowrap;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--dim);box-shadow:0 0 0 0 rgba(0,0,0,0)}
+.dot.live{background:var(--ok);animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(49,217,156,.55)}100%{box-shadow:0 0 0 9px rgba(49,217,156,0)}}
+
+.btn{
+  display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;
+  font-size:13px;font-weight:600;border:1px solid var(--line);background:rgba(255,255,255,.045);
+  transition:transform .16s ease,box-shadow .2s ease,background .2s ease,border-color .2s;
+  white-space:nowrap;
+}
+.btn:hover{transform:translateY(-1.5px);background:rgba(255,255,255,.09);border-color:var(--line-2)}
+.btn:active{transform:translateY(0) scale(.985)}
+.btn.primary{
+  border-color:transparent;color:#fff;
+  background:linear-gradient(135deg,var(--a1),#5f8dff 45%,var(--a2));
+  box-shadow:0 12px 30px -12px var(--a1),inset 0 1px 0 rgba(255,255,255,.25);
+}
+.btn.primary:hover{box-shadow:0 18px 40px -14px var(--a1),inset 0 1px 0 rgba(255,255,255,.3)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+.stage{
+  position:relative;border-radius:22px;border:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(19,23,38,.85),rgba(10,12,21,.94));
+  padding:18px;min-height:460px;display:grid;place-items:center;
+  box-shadow:0 40px 90px -50px #000,inset 0 1px 0 rgba(255,255,255,.05);
+  overflow:hidden;
+}
+.stage::before{
+  content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(600px 220px at 50% -10%,rgba(124,92,255,.16),transparent 70%);
+}
+
+/* ---------- 空状态 ---------- */
+.empty{position:relative;text-align:center;padding:34px 22px;max-width:620px}
+.empty .halo{
+  width:88px;height:88px;margin:0 auto 18px;border-radius:26px;display:grid;place-items:center;
+  background:linear-gradient(135deg,rgba(124,92,255,.28),rgba(34,211,238,.22));
+  border:1px solid var(--line-2);box-shadow:0 24px 60px -26px var(--a1);
+  animation:breathe 4.2s ease-in-out infinite;
+}
+@keyframes breathe{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-6px) scale(1.04)}}
+.empty h2{margin:0 0 8px;font-size:20px;font-weight:650;letter-spacing:.3px}
+.empty p{margin:0 0 22px;color:var(--dim);font-size:13px;line-height:1.75}
+.empty .acts{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.dash{
+  margin-top:22px;padding:14px 16px;border-radius:14px;border:1px dashed rgba(255,255,255,.14);
+  color:#6f778f;font-size:12px;text-align:left;background:rgba(255,255,255,.018);
+}
+.dash b{color:#aab3cc;font-weight:600}
+
+/* ---------- 画布台 ---------- */
+.boardwrap{display:none;position:relative;line-height:0;border-radius:12px;
+  box-shadow:0 30px 80px -32px #000,0 0 0 1px var(--line)}
+#displayCanvas{display:block;max-width:100%;max-height:70vh;width:auto;height:auto;border-radius:12px}
+#overlay{position:absolute;inset:0;cursor:crosshair;border-radius:12px;touch-action:none}
+#annCanvas{position:absolute;display:none;pointer-events:none;image-rendering:auto}
+
+#selBox{
+  position:absolute;display:none;pointer-events:none;
+  box-shadow:0 0 0 9999px rgba(4,6,14,.66);
+  outline:1.5px solid rgba(255,255,255,.92);
+  outline-offset:0;border-radius:2px;
+}
+#selBox::after{
+  content:"";position:absolute;inset:-1px;border-radius:3px;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(124,92,255,.5),0 0 22px rgba(124,92,255,.45);
+}
+.hnd{position:absolute;width:9px;height:9px;border-radius:3px;background:#fff;
+  border:1.5px solid var(--a1);box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.hnd.tl{left:-5px;top:-5px}.hnd.tr{right:-5px;top:-5px}
+.hnd.bl{left:-5px;bottom:-5px}.hnd.br{right:-5px;bottom:-5px}
+#sizeBadge{
+  position:absolute;top:-28px;left:0;padding:3px 9px;border-radius:8px;font-size:11.5px;
+  font-weight:600;letter-spacing:.3px;color:#0a0c14;line-height:1.5;
+  background:linear-gradient(135deg,#fff,#c9d6ff);white-space:nowrap;
+  box-shadow:0 6px 18px -8px #000;
+}
+#mag{
+  position:absolute;display:none;width:126px;height:126px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.85);overflow:hidden;pointer-events:none;z-index:20;
+  box-shadow:0 16px 40px -14px #000,0 0 0 4px rgba(124,92,255,.25);
+  background:#000;
+}
+#mag canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+#magTip{
+  position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+  padding:1px 6px;border-radius:6px;font-size:10px;color:#0a0c14;font-weight:700;
+  background:rgba(255,255,255,.92);white-space:nowrap;
+}
+
+/* ---------- 浮动工具条 ---------- */
+.toolbar{
+  position:absolute;display:none;flex-direction:column;gap:8px;z-index:40;
+  padding:9px;border-radius:16px;border:1px solid var(--line-2);
+  background:var(--panel-2);backdrop-filter:blur(22px);
+  box-shadow:0 30px 70px -26px #000,inset 0 1px 0 rgba(255,255,255,.09);
+  animation:pop .2s cubic-bezier(.2,.9,.3,1.4);
+  max-width:calc(100vw - 32px);
+}
+@keyframes pop{from{opacity:0;transform:translateY(-8px) scale(.96)}
+  to{opacity:1;transform:translateY(0) scale(1)}}
+.trow{display:flex;align-items:center;gap:3px;flex-wrap:wrap;justify-content:center;max-width:520px}
+.sep{width:1px;align-self:stretch;margin:2px 5px;background:var(--line)}
+.tool{
+  width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+  color:#a9b2ca;transition:all .16s ease;position:relative;
+}
+.tool:hover{background:rgba(255,255,255,.09);color:#fff;transform:translateY(-1.5px)}
+.tool.on{
+  color:#fff;background:linear-gradient(135deg,var(--a1),#4f8bff 55%,var(--a2));
+  box-shadow:0 8px 20px -8px var(--a1),inset 0 1px 0 rgba(255,255,255,.3);
+}
+.tool svg{width:18px;height:18px;display:block}
+.tool[data-tip]:hover::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  padding:3px 8px;border-radius:7px;font-size:11px;white-space:nowrap;color:#e9edf8;
+  background:rgba(8,10,18,.96);border:1px solid var(--line-2);box-shadow:0 8px 22px -10px #000;z-index:60;
+}
+.swatches{display:flex;gap:5px;align-items:center;padding:0 4px}
+.sw{
+  width:19px;height:19px;border-radius:50%;border:2px solid transparent;
+  transition:transform .15s ease,box-shadow .15s ease;position:relative;
+}
+.sw:hover{transform:scale(1.16)}
+.sw.on{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.22),0 6px 14px -6px #000;transform:scale(1.1)}
+.widths{display:flex;gap:2px;align-items:center}
+.wbtn{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;transition:background .15s}
+.wbtn:hover{background:rgba(255,255,255,.09)}
+.wbtn.on{background:rgba(124,92,255,.32)}
+.wbtn i{display:block;border-radius:99px;background:currentColor}
+
+/* 文字输入 */
+#textInput{
+  position:absolute;display:none;z-index:45;padding:2px 6px;border-radius:7px;
+  background:rgba(8,10,18,.7);border:1.4px dashed rgba(255,255,255,.8);color:#fff;
+  font-weight:700;outline:none;min-width:70px;backdrop-filter:blur(4px);
+}
+
+/* ---------- 底部 ---------- */
+.hints{
+  display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:center;
+  padding:12px 16px;border-radius:16px;border:1px solid var(--line);
+  background:rgba(14,17,28,.6);backdrop-filter:blur(14px);font-size:12px;color:var(--dim);
+}
+kbd{
+  display:inline-block;padding:1.5px 7px;border-radius:6px;font-size:11px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  color:#cdd6ee;background:rgba(255,255,255,.07);border:1px solid var(--line-2);
+  box-shadow:0 2px 0 rgba(0,0,0,.4);margin-right:4px;
+}
+.toast{
+  position:fixed;left:50%;bottom:36px;transform:translateX(-50%) translateY(20px);
+  padding:11px 20px;border-radius:13px;font-size:13px;font-weight:600;z-index:200;
+  background:rgba(10,13,22,.95);border:1px solid var(--line-2);color:#e9edf8;
+  box-shadow:0 24px 60px -22px #000;opacity:0;pointer-events:none;transition:all .28s cubic-bezier(.2,.9,.3,1.3);
+  backdrop-filter:blur(14px);display:flex;align-items:center;gap:9px;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast .bar{width:3px;height:16px;border-radius:2px;background:linear-gradient(180deg,var(--a1),var(--a2))}
+.hidden{display:none!important}
+@media (max-width:760px){
+  .brand p{display:none}
+  .hints{font-size:11px}
+  #displayCanvas{max-height:52vh}
+}
+
+/* ===== Tauri 截屏全屏态 ===== */
+body.capturing .app{max-width:none;padding:0;gap:0}
+body.capturing .topbar,body.capturing .hints{display:none}
+body.capturing .stage{border:none;border-radius:0;padding:0;min-height:100vh}
+body.capturing .boardwrap{position:fixed;inset:0;display:block!important;border-radius:0;box-shadow:none;background:#000}
+body.capturing #displayCanvas{max-width:100vw!important;max-height:100vh!important;width:100vw!important;height:100vh!important;border-radius:0}
+body.capturing #selBox{box-shadow:0 0 0 9999px rgba(4,6,14,.62)}
+</style>
+</head>
+<body>
+<div class="bg"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
+<div class="gridbg"></div>
+
+<div class="app">
+  <!-- 顶栏 -->
+  <header class="topbar" data-tauri-drag-region>
+    <div class="logo">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5A2.5 2.5 0 0 1 18.5 21H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/>
+        <circle cx="12" cy="12" r="3.1"/>
+      </svg>
+    </div>
+    <div class="brand">
+      <h1>SnapStudio · 截图标注工作台</h1>
+      <p>捕获屏幕 · 精准框选 · 十种标注 · 一键复制</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill" id="statusPill"><span class="dot" id="statusDot"></span><span id="statusText">待机中</span></div>
+    <button class="btn primary" id="btnCapture">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5A2.5 2.5 0 0 1 18.5 21H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/></svg>
+      开始捕获
+    </button>
+    <button class="btn ghost" id="btnUpload">打开图片</button>
+    <input type="file" id="fileInput" accept="image/*" class="hidden">
+  </header>
+
+  <!-- 舞台 -->
+  <section class="stage" id="stage">
+    <div class="empty" id="empty">
+      <div class="halo">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="url(#g1)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a48bff"/><stop offset="1" stop-color="#4de3ff"/></linearGradient></defs>
+          <rect x="2.5" y="4.5" width="19" height="13.5" rx="2.4"/>
+          <path d="M8.5 21h7M12 18v3"/>
+          <path d="M8.6 10.4l2.2 2.2 4.6-4.6"/>
+        </svg>
+      </div>
+      <h2>先捕获一块屏幕，再随手标注</h2>
+      <p>点击「开始捕获」选择屏幕或窗口，画面会被冻结；<br>拖拽框出想要的范围，松开即可调出标注工具条。</p>
+      <div class="acts">
+        <button class="btn primary" id="btnCapture2">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v13M12 3l-4 4M12 3l4 4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          捕获屏幕
+        </button>
+        <button class="btn" id="btnUpload2">上传一张图片</button>
+        <button class="btn ghost" id="btnPaste2">粘贴剪贴板</button>
+        <button class="btn ghost" id="btnDemo">看演示画面</button>
+      </div>
+      <div class="dash">
+        <b>小贴士</b>：捕获后按住鼠标拖动即可框选；<kbd>1</kbd>~<kbd>9</kbd> 快速切换工具，<kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销，<kbd>Ctrl</kbd>+<kbd>C</kbd> 复制结果，<kbd>Esc</kbd> 重选。
+      </div>
+    </div>
+
+    <div class="boardwrap" id="board">
+      <canvas id="displayCanvas"></canvas>
+      <canvas id="annCanvas"></canvas>
+      <div id="selBox"><div id="sizeBadge">0 × 0</div>
+        <i class="hnd tl"></i><i class="hnd tr"></i><i class="hnd bl"></i><i class="hnd br"></i>
+      </div>
+      <input id="textInput" />
+
+      <!-- 浮出工具条 -->
+      <div class="toolbar" id="toolbar">
+        <div class="trow" id="toolRow">
+          <button class="tool" data-tool="rect" data-tip="矩形 (1)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/></svg></button>
+          <button class="tool" data-tool="ellipse" data-tip="椭圆 (2)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><ellipse cx="12" cy="12" rx="8.6" ry="7.4"/></svg></button>
+          <button class="tool" data-tool="arrow" data-tip="箭头 (3)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5"/><path d="M11.5 5H19v7.5"/></svg></button>
+          <button class="tool" data-tool="line" data-tip="直线 (4)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4.5 19.5L19.5 4.5"/></svg></button>
+          <button class="tool" data-tool="pen" data-tip="自由画笔 (5)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20c3.5.6 5-1.4 4.2-3.2-.7-1.7-2.9-2-3.4-.6-.5 1.3.9 2.6 3 2.6 3.6 0 5.5-3.6 7.6-6.4 1.6-2.1 3-3.9 4.2-3.9 1 0 1.6.7 1.4 1.6"/></svg></button>
+          <button class="tool" data-tool="highlight" data-tip="荧光笔 (6)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6.5-9.5a2.6 2.6 0 0 1 4.2 3L10.4 18"/><path d="M4 20h7"/></svg></button>
+          <button class="tool" data-tool="mosaic" data-tip="马赛克 (7)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7" opacity=".45"/><rect x="3.5" y="13.5" width="7" height="7" opacity=".45"/><rect x="13.5" y="13.5" width="7" height="7"/></svg></button>
+          <button class="tool" data-tool="text" data-tip="文字 (8)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></svg></button>
+          <button class="tool" data-tool="badge" data-tip="序号 (9)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.6"/><path d="M10 9.6l2-1.1V16" stroke-linecap="round"/></svg></button>
+          <span class="sep"></span>
+          <button class="tool" id="btnUndo" data-tip="撤销 (Ctrl+Z)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h10.5a5 5 0 0 1 0 10H9"/><path d="M7.5 5.5L4 9l3.5 3.5"/></svg></button>
+          <button class="tool" id="btnRedo" data-tip="重做 (Ctrl+Y)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9H9.5a5 5 0 0 0 0 10H15"/><path d="M16.5 5.5L20 9l-3.5 3.5"/></svg></button>
+          <span class="sep"></span>
+          <button class="tool" id="btnCopy" data-tip="复制到剪贴板 (Ctrl+C)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.2"/><path d="M15.5 5.5v-.8a1.7 1.7 0 0 0-1.7-1.7H5.2A1.7 1.7 0 0 0 3.5 4.7v8.6a1.7 1.7 0 0 0 1.7 1.7h.8"/></svg></button>
+          <button class="tool" id="btnSave" data-tip="保存 PNG (Ctrl+S)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M12 15l-4-4M12 15l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>
+          <button class="tool" id="btnClose" data-tip="取消选区 (Esc)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
+        </div>
+        <div class="trow">
+          <div class="swatches" id="swatches"></div>
+          <span class="sep"></span>
+          <div class="widths" id="widths"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="hints">
+    <span><kbd>拖拽</kbd>框选</span>
+    <span><kbd>1</kbd>–<kbd>9</kbd>切换工具</span>
+    <span><kbd>Ctrl</kbd>+<kbd>Z</kbd>撤销</span>
+    <span><kbd>Ctrl</kbd>+<kbd>C</kbd>复制</span>
+    <span><kbd>Ctrl</kbd>+<kbd>S</kbd>保存</span>
+    <span><kbd>Esc</kbd>重选</span>
+    <span><kbd>Shift</kbd>正方形/正圆</span>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="bar"></span><span id="toastText"></span></div>
+
+<script>
+(function () {
+  'use strict';
+  var IS_TAURI = !!(window.__TAURI__ && window.__TAURI__.core);
+
+  // ============ DOM ============
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $('stage'), emptyEl = $('empty'), board = $('board');
+  var canvas = $('displayCanvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+  var annCanvas = $('annCanvas'), actx = annCanvas.getContext('2d');
+  var overlay = null;
+  var selBox = $('selBox'), sizeBadge = $('sizeBadge');
+  var toolbar = $('toolbar'), swatches = $('swatches'), widths = $('widths');
+  var textInput = $('textInput');
+  var mag = null, magCtx = null, magTip = null;
+
+  // ============ 状态 ============
+  var S = {
+    img: null,            // 底图 (Image / VideoFrame -> canvas)
+    sel: null,            // {x,y,w,h} 源图像素坐标
+    tool: 'rect',
+    color: '#ff3b5c',
+    width: 4,
+    history: [[]],        // 命令快照数组
+    redoStack: [],
+    preview: null,        // 绘制中的临时图形
+    drag: null,
+    badge: 0,
+    dragMode: null        // 'select' | 'move'
+  };
+
+  var COLORS = ['#ff3b5c', '#ff8a3d', '#ffd23d', '#31d99c', '#22d3ee', '#5b8cff', '#a877ff', '#ffffff', '#111318'];
+  var WIDTHS = [2, 4, 6, 9];
+
+  // ============ 工具函数 ============
+  function toast(msg) {
+    var t = $('toast');
+    $('toastText').textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('show'); }, 1900);
+  }
+  function setStatus(txt, live) {
+    $('statusText').textContent = txt;
+    $('statusDot').className = 'dot' + (live ? ' live' : '');
+  }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  // ============ 初始化色板 / 笔宽 ============
+  COLORS.forEach(function (c) {
+    var b = document.createElement('button');
+    b.className = 'sw' + (c === S.color ? ' on' : '');
+    b.style.background = c;
+    if (c === '#ffffff') b.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,.25)';
+    b.dataset.color = c;
+    b.addEventListener('click', function () {
+      S.color = c;
+      Array.prototype.forEach.call(swatches.children, function (n) { n.classList.remove('on'); });
+      b.classList.add('on');
+      if (textInput.style.display === 'block') textInput.style.color = c;
+    });
+    swatches.appendChild(b);
+  });
+  WIDTHS.forEach(function (w, i) {
+    var b = document.createElement('button');
+    b.className = 'wbtn' + (i === 1 ? ' on' : '');
+    b.dataset.w = w;
+    var d = Math.min(14, 3 + w * 1.15);
+    b.innerHTML = '<i style="width:' + d + 'px;height:' + d + 'px"></i>';
+    b.addEventListener('click', function () {
+      S.width = w;
+      Array.prototype.forEach.call(widths.children, function (n) { n.classList.remove('on'); });
+      b.classList.add('on');
+    });
+    widths.appendChild(b);
+  });
+
+  // 工具切换
+  Array.prototype.forEach.call(document.querySelectorAll('.tool[data-tool]'), function (btn) {
+    btn.addEventListener('click', function () { selectTool(btn.dataset.tool); });
+  });
+  function selectTool(t) {
+    S.tool = t;
+    Array.prototype.forEach.call(document.querySelectorAll('.tool[data-tool]'), function (b) {
+      b.classList.toggle('on', b.dataset.tool === t);
+    });
+    commitTextInput();
+    hideMag();
+  }
+  selectTool('rect');
+
+  // ============ 底图加载 ============
+  function fitCanvas() {
+    if (!canvas.width) return;
+    // 触发 CSS 尺寸重算
+    canvas.style.maxHeight = window.innerHeight < 700 ? '56vh' : '70vh';
+  }
+  window.addEventListener('resize', function () { fitCanvas(); syncOverlay(); });
+
+  function loadImage(img) {
+    var natural = { w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
+    if (!natural.w) { toast('图片读取失败'); return; }
+    canvas.width = natural.w;
+    canvas.height = natural.h;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    S.img = canvas;                 // 底图即 canvas 本身
+    emptyEl.classList.add('hidden');
+    board.style.display = 'block';
+    resetSelection();
+    fitCanvas();
+    setStatus('已载入 ' + natural.w + '×' + natural.h, true);
+    requestAnimationFrame(syncOverlay);
+  }
+
+  // 屏幕捕获
+  function captureScreen() { if (IS_TAURI) { startTauriCapture(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      toast('当前环境不支持屏幕捕获，请用「打开图片」');
+      return;
+    }
+    setStatus('请求捕获权限…', false);
+    navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 30, cursor: 'never' },
+      audio: false
+    }).then(function (stream) {
+      var video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      video.playsInline = true;
+      return video.play().then(function () {
+        return new Promise(function (res) { setTimeout(function () { res(video); }, 260); });
+      }).then(function (v) {
+        var w = v.videoWidth, h = v.videoHeight;
+        var tmp = document.createElement('img');
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(v, 0, 0, w, h);
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        tmp.onload = function () { loadImage(tmp); toast('捕获成功，拖拽框选目标区域'); };
+        tmp.onerror = function () { toast('画面冻结失败'); };
+        tmp.src = c.toDataURL('image/png');
+      });
+    }).catch(function (err) {
+      console.warn(err);
+      setStatus('待机中', false);
+      if (String(err && err.name) === 'NotAllowedError') toast('已取消捕获');
+      else toast('捕获失败：可改用「打开图片」');
+    });
+  }
+
+  function readFile(f) {
+    if (!f || !/^image\//.test(f.type)) { toast('请选择图片文件'); return; }
+    var url = URL.createObjectURL(f);
+    var img = new Image();
+    img.onload = function () { loadImage(img); URL.revokeObjectURL(url); };
+    img.onerror = function () { toast('图片解码失败'); };
+    img.src = url;
+  }
+
+  // ============ 选区 ============
+  function resetSelection() {
+    S.sel = null;
+    S.history = [[]];
+    S.redoStack = [];
+    S.preview = null;
+    S.badge = 0;
+    annCanvas.width = annCanvas.height = 0;
+    annCanvas.style.display = 'none';
+    selBox.style.display = 'none';
+    toolbar.style.display = 'none';
+    textInput.style.display = 'none';
+  }
+
+  function buildOverlay() {
+    overlay = document.createElement('div');
+    overlay.id = 'overlay';
+    board.insertBefore(overlay, annCanvas);
+    overlay.addEventListener('pointerdown', onDown);
+    overlay.addEventListener('pointermove', onMove);
+    overlay.addEventListener('pointerup', onUp);
+    overlay.addEventListener('pointercancel', onUp);
+    overlay.addEventListener('dblclick', function () { if (S.sel) doCopy(); });
+
+    // 放大镜
+    mag = document.createElement('div');
+    mag.id = 'mag';
+    var mc = document.createElement('canvas');
+    mc.width = mc.height = 252;
+    mag.appendChild(mc);
+    magCtx = mc.getContext('2d');
+    magCtx.imageSmoothingEnabled = false;
+    magTip = document.createElement('div');
+    magTip.id = 'magTip';
+    mag.appendChild(magTip);
+    board.appendChild(mag);
+  }
+
+  function ratio() {
+    var r = canvas.getBoundingClientRect();
+    return canvas.width ? r.width / canvas.width : 1;
+  }
+  function toImage(e) {
+    var r = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) / r.width * canvas.width,
+      y: (e.clientY - r.top) / r.height * canvas.height
+    };
+  }
+
+  function syncOverlay() {
+    if (!S.sel) return;
+    var k = ratio();
+    var b = board.getBoundingClientRect();
+    var r = canvas.getBoundingClientRect();
+    var offX = r.left - b.left, offY = r.top - b.top;
+    var s = S.sel;
+    selBox.style.display = 'block';
+    selBox.style.left = (offX + s.x * k) + 'px';
+    selBox.style.top = (offY + s.y * k) + 'px';
+    selBox.style.width = (s.w * k) + 'px';
+    selBox.style.height = (s.h * k) + 'px';
+    sizeBadge.textContent = Math.round(s.w) + ' × ' + Math.round(s.h);
+    if (annCanvas.width) {
+      annCanvas.style.display = 'block';
+      annCanvas.style.left = (offX + s.x * k) + 'px';
+      annCanvas.style.top = (offY + s.y * k) + 'px';
+      annCanvas.style.width = (s.w * k) + 'px';
+      annCanvas.style.height = (s.h * k) + 'px';
+    }
+    placeToolbar();
+  }
+
+  function placeToolbar() {
+    if (!S.sel) { toolbar.style.display = 'none'; return; }
+    var k = ratio();
+    var b = board.getBoundingClientRect();
+    var r = canvas.getBoundingClientRect();
+    var offX = r.left - b.left, offY = r.top - b.top;
+    var s = S.sel;
+    toolbar.style.display = 'flex';
+    var tw = toolbar.offsetWidth, th = toolbar.offsetHeight;
+    var bw = b.width, bh = b.height;
+    var cx = offX + (s.x + s.w / 2) * k;
+    var below = offY + (s.y + s.h) * k + 14;
+    var above = offY + s.y * k - th - 14;
+    var top = (below + th > bh - 4) ? Math.max(4, above) : below;
+    var left = clamp(cx - tw / 2, 4, Math.max(4, bw - tw - 4));
+    toolbar.style.left = left + 'px';
+    toolbar.style.top = top + 'px';
+  }
+
+  // 放大镜
+  function showMag(p) {
+    if (!S.img) return;
+    var k = ratio();
+    var b = board.getBoundingClientRect();
+    var r = canvas.getBoundingClientRect();
+    mag.style.display = 'block';
+    var mx = r.left - b.left + p.x * k, my = r.top - b.top + p.y * k;
+    var half = mag.offsetWidth / 2 || 63;
+    var left = clamp(mx - half, 0, b.width - half * 2);
+    var top = my - half - 74;
+    if (top < 0) top = my + 74;
+    top = clamp(top, 0, b.height - half * 2);
+    mag.style.left = left + 'px';
+    mag.style.top = top + 'px';
+    var c = magCtx.canvas, size = c.width;
+    var zoom = 5, srcSpan = size / zoom;
+    magCtx.fillStyle = '#000';
+    magCtx.fillRect(0, 0, size, size);
+    magCtx.drawImage(canvas, p.x - srcSpan / 2, p.y - srcSpan / 2, srcSpan, srcSpan, 0, 0, size, size);
+    // 准星
+    magCtx.strokeStyle = 'rgba(255,255,255,.85)';
+    magCtx.lineWidth = 1;
+    magCtx.beginPath();
+    magCtx.moveTo(size / 2, size / 2 - 16); magCtx.lineTo(size / 2, size / 2 + 16);
+    magCtx.moveTo(size / 2 - 16, size / 2); magCtx.lineTo(size / 2 + 16, size / 2);
+    magCtx.stroke();
+    magTip.textContent = Math.round(p.x) + ',' + Math.round(p.y);
+  }
+  function hideMag() { if (mag) mag.style.display = 'none'; }
+
+  // ============ 指针交互 ============
+  function onDown(e) {
+    if (!S.img) return;
+    overlay.setPointerCapture(e.pointerId);
+    var p = toImage(e);
+    commitTextInput();
+
+    var s = S.sel;
+    if (s && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h) {
+      // 在选区内 -> 标注
+      S.dragMode = 'annotate';
+      startAnnotate(p, e);
+      return;
+    }
+    // 选区外 -> 重新框选
+    S.dragMode = 'select';
+    if (s) { resetSelection(); }
+    S.drag = { x0: clamp(p.x, 0, canvas.width), y0: clamp(p.y, 0, canvas.height), x1: p.x, y1: p.y };
+    selBox.style.display = 'block';
+    annCanvas.style.display = 'none';
+    updateSelFromDrag();
+    showMag(p);
+  }
+
+  function updateSelFromDrag() {
+    var d = S.drag, k = ratio();
+    var r = canvas.getBoundingClientRect(), b = board.getBoundingClientRect();
+    var offX = r.left - b.left, offY = r.top - b.top;
+    var x0 = clamp(d.x0, 0, canvas.width), y0 = clamp(d.y0, 0, canvas.height);
+    var x1 = clamp(d.x1, 0, canvas.width), y1 = clamp(d.y1, 0, canvas.height);
+    var x = Math.min(x0, x1), y = Math.min(y0, y1);
+    var w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+    selBox.style.left = (offX + x * k) + 'px';
+    selBox.style.top = (offY + y * k) + 'px';
+    selBox.style.width = (w * k) + 'px';
+    selBox.style.height = (h * k) + 'px';
+    sizeBadge.textContent = Math.round(w) + ' × ' + Math.round(h);
+    S.sel = { x: x, y: y, w: w, h: h };
+  }
+
+  function onMove(e) {
+    if (!S.img) return;
+    var p = toImage(e);
+    if (S.dragMode === 'select' && S.drag) {
+      if (e.shiftKey) {
+        var dx = p.x - S.drag.x0, dy = p.y - S.drag.y0;
+        var m = Math.max(Math.abs(dx), Math.abs(dy));
+        p = { x: S.drag.x0 + Math.sign(dx) * m, y: S.drag.y0 + Math.sign(dy) * m };
+      }
+      S.drag.x1 = p.x; S.drag.y1 = p.y;
+      updateSelFromDrag();
+      showMag(p);
+    } else if (S.dragMode === 'annotate') {
+      moveAnnotate(p, e);
+    } else {
+      overlay.style.cursor = (S.sel && insideSel(p)) ? (S.tool === 'text' ? 'text' : 'crosshair') : 'crosshair';
+    }
+  }
+  function insideSel(p) {
+    var s = S.sel;
+    return s && p.x >= s.x && p.x <= s.x + s.w && p.y >= s.y && p.y <= s.y + s.h;
+  }
+
+  function onUp(e) {
+    if (S.dragMode === 'select' && S.drag) {
+      finalizeSelection();
+    } else if (S.dragMode === 'annotate') {
+      endAnnotate();
+    }
+    S.dragMode = null;
+    S.drag = null;
+  }
+
+  function finalizeSelection() {
+    hideMag();
+    var s = S.sel;
+    if (!s || s.w < 6 || s.h < 6) {
+      resetSelection();
+      toast('选区太小，请重新框选');
+      return false;
+    }
+    annCanvas.width = Math.max(1, Math.round(s.w));
+    annCanvas.height = Math.max(1, Math.round(s.h));
+    actx.setTransform(1, 0, 0, 1, 0, 0);
+    actx.clearRect(0, 0, annCanvas.width, annCanvas.height);
+    actx.translate(-s.x, -s.y);
+    S.history = [[]];
+    S.redoStack = [];
+    S.badge = 0;
+    syncOverlay();
+    requestAnimationFrame(function () { placeToolbar(); syncOverlay(); });
+    setStatus('已选中 ' + Math.round(s.w) + '×' + Math.round(s.h), true);
+    return true;
+  }
+
+  // ============ 标注绘制 ============
+  var textStart = null;
+
+  function snapshot() { return clone(S.history[S.history.length - 1]); }
+  function pushCmd(c) {
+    var arr = snapshot();
+    arr.push(c);
+    S.history.push(arr);
+    S.redoStack = [];
+    repaint();
+  }
+
+  function repaint() {
+    if (!annCanvas.width) return;
+    actx.setTransform(1, 0, 0, 1, 0, 0);
+    actx.clearRect(0, 0, annCanvas.width, annCanvas.height);
+    actx.translate(-S.sel.x, -S.sel.y);
+    var cmds = S.history[S.history.length - 1];
+    for (var i = 0; i < cmds.length; i++) drawCmd(actx, cmds[i]);
+    if (S.preview) drawCmd(actx, S.preview);
+    annCanvas.style.display = 'block';
+  }
+
+  function drawCmd(pc, c) {
+    pc.save();
+    pc.lineCap = 'round';
+    pc.lineJoin = 'round';
+    switch (c.type) {
+      case 'rect':
+        pc.strokeStyle = c.color; pc.lineWidth = c.width;
+        pc.strokeRect(c.x, c.y, c.w, c.h);
+        break;
+      case 'ellipse':
+        pc.strokeStyle = c.color; pc.lineWidth = c.width;
+        pc.beginPath();
+        pc.ellipse(c.x + c.w / 2, c.y + c.h / 2, Math.abs(c.w / 2), Math.abs(c.h / 2), 0, 0, Math.PI * 2);
+        pc.stroke();
+        break;
+      case 'line':
+        pc.strokeStyle = c.color; pc.lineWidth = c.width;
+        pc.beginPath(); pc.moveTo(c.x1, c.y1); pc.lineTo(c.x2, c.y2); pc.stroke();
+        break;
+      case 'arrow': {
+        var ang = Math.atan2(c.y2 - c.y1, c.x2 - c.x1);
+        var head = Math.max(12, c.width * 4.2);
+        pc.strokeStyle = c.color; pc.lineWidth = c.width;
+        pc.beginPath();
+        pc.moveTo(c.x1, c.y1);
+        pc.lineTo(c.x2 - Math.cos(ang) * head * .82, c.y2 - Math.sin(ang) * head * .82);
+        pc.stroke();
+        pc.fillStyle = c.color;
+        pc.beginPath();
+        pc.moveTo(c.x2, c.y2);
+        pc.lineTo(c.x2 - Math.cos(ang - .42) * head, c.y2 - Math.sin(ang - .42) * head);
+        pc.lineTo(c.x2 - Math.cos(ang + .42) * head, c.y2 - Math.sin(ang + .42) * head);
+        pc.closePath();
+        pc.fill();
+        break;
+      }
+      case 'pen':
+        if (!c.pts || c.pts.length < 2) break;
+        pc.strokeStyle = c.color; pc.lineWidth = c.width;
+        pc.beginPath();
+        pc.moveTo(c.pts[0].x, c.pts[0].y);
+        for (var i = 1; i < c.pts.length; i++) pc.lineTo(c.pts[i].x, c.pts[i].y);
+        pc.stroke();
+        break;
+      case 'highlight':
+        if (!c.pts || c.pts.length < 2) break;
+        pc.globalAlpha = .38;
+        pc.strokeStyle = c.color;
+        pc.lineWidth = c.width * 4.6;
+        pc.beginPath();
+        pc.moveTo(c.pts[0].x, c.pts[0].y);
+        for (var j = 1; j < c.pts.length; j++) pc.lineTo(c.pts[j].x, c.pts[j].y);
+        pc.stroke();
+        break;
+      case 'mosaic':
+        pc.fillStyle = '#888';
+        for (var m = 0; m < c.cells.length; m++) {
+          var cell = c.cells[m];
+          pc.fillStyle = cell.c;
+          pc.fillRect(cell.x, cell.y, c.block, cell.block);
+        }
+        break;
+      case 'text':
+        pc.fillStyle = c.color;
+        pc.font = '700 ' + c.size + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+        pc.textBaseline = 'top';
+        pc.shadowColor = 'rgba(0,0,0,.45)';
+        pc.shadowBlur = 6;
+        pc.fillText(c.text, c.x, c.y);
+        break;
+      case 'badge': {
+        var rr = c.r;
+        pc.fillStyle = c.color;
+        pc.beginPath(); pc.arc(c.x, c.y, rr, 0, Math.PI * 2); pc.fill();
+        pc.strokeStyle = 'rgba(255,255,255,.9)'; pc.lineWidth = Math.max(1.5, rr * .09);
+        pc.stroke();
+        pc.fillStyle = '#fff';
+        pc.font = '800 ' + (rr * 1.15) + 'px "PingFang SC",sans-serif';
+        pc.textAlign = 'center';
+        pc.textBaseline = 'middle';
+        pc.fillText(String(c.n), c.x, c.y + rr * .04);
+        break;
+      }
+    }
+    pc.restore();
+  }
+
+  function startAnnotate(p, e) {
+    var s = S.sel;
+    var c = { type: S.tool, color: S.color, width: S.width };
+    if (S.tool === 'rect' || S.tool === 'ellipse') {
+      c.x = p.x; c.y = p.y; c.w = 0; c.h = 0;
+    } else if (S.tool === 'arrow' || S.tool === 'line') {
+      c.x1 = p.x; c.y1 = p.y; c.x2 = p.x; c.y2 = p.y;
+    } else if (S.tool === 'pen' || S.tool === 'highlight') {
+      c.pts = [{ x: p.x, y: p.y }];
+    } else if (S.tool === 'mosaic') {
+      c.block = Math.max(6, Math.round(S.width * 3.4));
+      c.cells = [];
+      c._seen = {};
+      paintCell(c, p.x, p.y);
+    } else if (S.tool === 'text') {
+      openTextInput(p);
+      S.dragMode = null;
+      return;
+    } else if (S.tool === 'badge') {
+      S.badge += 1;
+      c.n = S.badge;
+      c.r = Math.max(12, S.width * 3.4);
+      c.x = p.x + c.r; c.y = p.y + c.r;
+      pushCmd(c);
+      S.dragMode = null;
+      return;
+    }
+    S.preview = c;
+    repaint();
+  }
+
+  function moveAnnotate(p, e) {
+    var c = S.preview;
+    if (!c) return;
+    if (c.type === 'rect' || c.type === 'ellipse') {
+      if (e.shiftKey) {
+        var dx = p.x - c.x, dy = p.y - c.y;
+        var m = Math.max(Math.abs(dx), Math.abs(dy));
+        c.w = Math.sign(dx || 1) * m; c.h = Math.sign(dy || 1) * m;
+      } else { c.w = p.x - c.x; c.h = p.y - c.y; }
+    } else if (c.type === 'arrow' || c.type === 'line') {
+      c.x2 = p.x; c.y2 = p.y;
+    } else if (c.type === 'pen' || c.type === 'highlight') {
+      c.pts.push({ x: p.x, y: p.y });
+    } else if (c.type === 'mosaic') {
+      paintCell(c, p.x, p.y);
+      if (!c.pts) c.pts = [];
+      c.pts.push({ x: p.x, y: p.y });
+    }
+    repaint();
+  }
+
+  function paintCell(c, x, y) {
+    var b = c.block;
+    var bx = Math.floor(x / b) * b, by = Math.floor(y / b) * b;
+    var key = bx + '_' + by;
+    if (c._seen[key]) return;
+    c._seen[key] = 1;
+    var sx = clamp(bx, 0, canvas.width - 1), sy = clamp(by, 0, canvas.height - 1);
+    var sw = Math.min(b, canvas.width - sx), sh = Math.min(b, canvas.height - sy);
+    if (sw <= 0 || sh <= 0) return;
+    var data;
+    try { data = ctx.getImageData(sx, sy, sw, sh).data; } catch (err) { return; }
+    var r = 0, g = 0, bl = 0, n = 0;
+    for (var i = 0; i < data.length; i += 4) {
+      r += data[i]; g += data[i + 1]; bl += data[i + 2]; n++;
+    }
+    if (!n) return;
+    var col = 'rgb(' + Math.round(r / n) + ',' + Math.round(g / n) + ',' + Math.round(bl / n) + ')';
+    c.cells.push({ x: bx, y: by, block: b, c: col });
+  }
+
+  function endAnnotate() {
+    var c = S.preview;
+    S.preview = null;
+    if (!c) return;
+    if (c.type === 'rect' || c.type === 'ellipse') {
+      if (Math.abs(c.w) < 3 || Math.abs(c.h) < 3) { repaint(); return; }
+    }
+    if ((c.type === 'pen' || c.type === 'highlight') && c.pts.length < 2) { repaint(); return; }
+    if (c.type === 'mosaic') { if (!c.cells.length) { repaint(); return; } delete c._seen; }
+    if ((c.type === 'arrow' || c.type === 'line')) {
+      var d = Math.hypot(c.x2 - c.x1, c.y2 - c.y1);
+      if (d < 5) { repaint(); return; }
+    }
+    pushCmd(c);
+  }
+
+  // ============ 文字输入 ============
+  function openTextInput(p) {
+    var k = ratio();
+    var s = S.sel;
+    var size = Math.max(18, Math.round(S.width * 8));
+    textInput.value = '';
+    textInput.style.display = 'block';
+    textInput.style.left = ((p.x - s.x) * k) + 'px';
+    textInput.style.top = ((p.y - s.y) * k - size * k * .5) + 'px';
+    textInput.style.fontSize = Math.max(13, size * k) + 'px';
+    textInput.style.color = S.color;
+    textInput.dataset.x = p.x;
+    textInput.dataset.y = p.y;
+    textInput.dataset.size = size;
+    textInput.style.width = '120px';
+    setTimeout(function () { textInput.focus(); }, 10);
+  }
+  function commitTextInput() {
+    if (textInput.style.display !== 'block') return;
+    var txt = textInput.value.trim();
+    var px = parseFloat(textInput.dataset.x), py = parseFloat(textInput.dataset.y);
+    textInput.style.display = 'none';
+    textInput.value = '';
+    if (!txt) return;
+    pushCmd({
+      type: 'text', text: txt, x: px, y: py,
+      size: parseFloat(textInput.dataset.size), color: S.color
+    });
+  }
+  textInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); commitTextInput(); }
+    if (e.key === 'Escape') { textInput.style.display = 'none'; textInput.value = ''; e.stopPropagation(); }
+  });
+  textInput.addEventListener('blur', commitTextInput);
+
+  // ============ 撤销 / 重做 ============
+  function undo() {
+    if (S.history.length <= 1) { toast('没有可撤销的操作'); return; }
+    S.redoStack.push(S.history.pop());
+    repaint();
+  }
+  function redo() {
+    if (!S.redoStack.length) { toast('没有可重做的操作'); return; }
+    S.history.push(S.redoStack.pop());
+    repaint();
+  }
+  $('btnUndo').addEventListener('click', undo);
+  $('btnRedo').addEventListener('click', redo);
+
+  // ============ 导出 ============
+  function compose() {
+    var s = S.sel;
+    var c = document.createElement('canvas');
+    c.width = Math.round(s.w);
+    c.height = Math.round(s.h);
+    var g = c.getContext('2d');
+    g.drawImage(canvas, s.x, s.y, s.w, s.h, 0, 0, c.width, c.height);
+    if (annCanvas.width) {
+      g.save();
+      g.translate(-s.x, -s.y);
+      var cmds = S.history[S.history.length - 1];
+      for (var i = 0; i < cmds.length; i++) drawCmd(g, cmds[i]);
+      g.restore();
+    }
+    return c;
+  }
+  function toBlob(c) {
+    return new Promise(function (res) { c.toBlob(function (b) { res(b); }, 'image/png'); });
+  }
+  function doCopy() { if (IS_TAURI) { tauriExport('copy'); return; }
+    if (!S.sel) { toast('请先框选区域'); return; }
+    var c = compose();
+    toBlob(c).then(function (blob) {
+      if (!blob) { toast('生成失败'); return; }
+      if (navigator.clipboard && window.ClipboardItem) {
+        return navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          .then(function () { toast('已复制到剪贴板 · ' + c.width + '×' + c.height); })
+          .catch(function () { fallbackDownload(blob); });
+      }
+      fallbackDownload(blob);
+    });
+  }
+  function fallbackDownload(blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'snap-' + Date.now() + '.png';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast('已下载 PNG（当前环境不支持写剪贴板）');
+  }
+  function doSave() { if (IS_TAURI) { tauriExport('save'); return; }
+    if (!S.sel) { toast('请先框选区域'); return; }
+    var c = compose();
+    toBlob(c).then(function (blob) { if (blob) fallbackDownload(blob); });
+  }
+  $('btnCopy').addEventListener('click', doCopy);
+  $('btnSave').addEventListener('click', doSave);
+  $('btnClose').addEventListener('click', function () {
+    if (IS_TAURI && document.body.classList.contains('capturing')) { exitCaptureMode(); return; }
+    resetSelection();
+    setStatus('已取消选区', false);
+  });
+
+  // ============ 顶部按钮 ============
+  $('btnCapture').addEventListener('click', captureScreen);
+  $('btnCapture2').addEventListener('click', captureScreen);
+  $('btnUpload').addEventListener('click', function () { $('fileInput').click(); });
+  $('btnUpload2').addEventListener('click', function () { $('fileInput').click(); });
+  $('fileInput').addEventListener('change', function (e) {
+    if (e.target.files && e.target.files[0]) readFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  function pasteFromClipboard(btn) {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      toast('当前环境不支持读取剪贴板');
+      return;
+    }
+    navigator.clipboard.read().then(function (items) {
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        for (var j = 0; j < it.types.length; j++) {
+          if (/^image\//.test(it.types[j])) {
+            return it.getType(it.types[j]).then(function (blob) {
+              var url = URL.createObjectURL(blob);
+              var img = new Image();
+              img.onload = function () { loadImage(img); URL.revokeObjectURL(url); };
+              img.src = url;
+            });
+          }
+        }
+      }
+      toast('剪贴板里没有图片');
+    }).catch(function () { toast('读取剪贴板被拒绝'); });
+  }
+  $('btnPaste2').addEventListener('click', function () { pasteFromClipboard(); });
+  $('btnCapture2').addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // 全局粘贴
+  window.addEventListener('paste', function (e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') === 0) {
+        var f = items[i].getAsFile();
+        if (f) { readFile(f); e.preventDefault(); }
+        return;
+      }
+    }
+  });
+
+  // 拖放
+  ['dragover', 'drop'].forEach(function (t) {
+    stage.addEventListener(t, function (e) { e.preventDefault(); });
+  });
+  stage.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) readFile(f);
+  });
+
+  // ============ 快捷键 ============
+  var TOOL_KEYS = ['rect', 'ellipse', 'arrow', 'line', 'pen', 'highlight', 'mosaic', 'text', 'badge'];
+  window.addEventListener('keydown', function (e) {
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' && e.target !== textInput) return;
+    var mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+    if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); doCopy(); return; }
+    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); return; }
+    if (e.key === 'Escape') {
+      if (textInput.style.display === 'block') { commitTextInput(); return; }
+      if (IS_TAURI && document.body.classList.contains('capturing')) { exitCaptureMode(); return; }
+      if (S.sel) { resetSelection(); setStatus('已取消选区', false); }
+      return;
+    }
+    if (e.key === 'Enter') { commitTextInput(); return; }
+    if (!mod && /^[1-9]$/.test(e.key)) {
+      var t = TOOL_KEYS[parseInt(e.key, 10) - 1];
+      if (t) { selectTool(t); toast('工具：' + t); }
+    }
+  });
+
+  // ============ 演示模式 ============
+  function roundRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+  function runDemo() {
+    var c = document.createElement('canvas');
+    c.width = 1280; c.height = 800;
+    var g = c.getContext('2d');
+    var bg = g.createLinearGradient(0, 0, 1280, 800);
+    bg.addColorStop(0, '#111527'); bg.addColorStop(1, '#0a0d1a');
+    g.fillStyle = bg; g.fillRect(0, 0, 1280, 800);
+    g.fillStyle = '#161b2e'; g.fillRect(0, 0, 1280, 52);
+    ['#ff5f57', '#febc2e', '#28c840'].forEach(function (col, i) {
+      g.fillStyle = col; g.beginPath(); g.arc(28 + i * 24, 26, 7.5, 0, Math.PI * 2); g.fill();
+    });
+    g.fillStyle = 'rgba(255,255,255,.55)';
+    g.font = '600 15px "Segoe UI",sans-serif';
+    g.fillText('运营数据面板 · 2026 Q4', 100, 32);
+    var cards = [
+      { x: 40, y: 92, w: 380, h: 150, t: '日活跃用户', v: '128,394', c: '#a48bff' },
+      { x: 450, y: 92, w: 380, h: 150, t: '转化率', v: '12.8%', c: '#4de3ff' },
+      { x: 860, y: 92, w: 380, h: 150, t: '收入 (CNY)', v: '¥ 86,420', c: '#ff6b9d' }
+    ];
+    cards.forEach(function (cd) {
+      g.fillStyle = 'rgba(255,255,255,.05)';
+      roundRect(g, cd.x, cd.y, cd.w, cd.h, 16); g.fill();
+      g.fillStyle = 'rgba(255,255,255,.5)';
+      g.font = '13px "Segoe UI",sans-serif';
+      g.fillText(cd.t, cd.x + 24, cd.y + 36);
+      g.fillStyle = cd.c;
+      g.font = '700 40px "Segoe UI",sans-serif';
+      g.fillText(cd.v, cd.x + 24, cd.y + 104);
+    });
+    var bars = [120, 180, 150, 240, 210, 300, 260, 340, 290, 380, 330, 420];
+    var by0 = 700;
+    bars.forEach(function (bh, i) {
+      var x = 80 + i * 56;
+      var grd = g.createLinearGradient(0, by0 - bh, 0, by0);
+      grd.addColorStop(0, '#7c5cff'); grd.addColorStop(1, 'rgba(34,211,238,.3)');
+      g.fillStyle = grd;
+      roundRect(g, x, by0 - bh, 34, bh, 7); g.fill();
+    });
+    g.strokeStyle = 'rgba(255,255,255,.1)';
+    g.beginPath(); g.moveTo(60, 700.5); g.lineTo(1220, 700.5); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.4)';
+    g.font = '13px "Segoe UI",sans-serif';
+    g.fillText('月度增长趋势', 84, 254);
+    g.fillStyle = 'rgba(255,255,255,.18)';
+    g.font = '700 36px "Segoe UI",sans-serif';
+    g.fillText('SnapStudio 演示底图', 60, 620);
+
+    // canvas 可直接作为底图，同步完成
+    loadImage(c);
+    S.sel = { x: 120, y: 250, w: 640, h: 430 };
+    finalizeSelection();
+    // 预置两笔标注，直观展示效果
+    pushCmd({ type: 'arrow', x1: 180, y1: 350, x2: 320, y2: 320, color: '#ff3b5c', width: 4 });
+    S.badge = 1;
+    pushCmd({ type: 'badge', x: 690, y: 300, n: 1, r: 15, color: '#5b8cff' });
+    toast('演示模式：直接试试工具条上的标注功能');
+  }
+  $('btnDemo').addEventListener('click', runDemo);
+
+  // ============ 启动 ============
+  buildOverlay();
+  setStatus('待机中', false);
+
+  // URL 带 #demo 时自动进入演示
+  if (location.hash.indexOf('demo') >= 0) setTimeout(runDemo, 120);
+
+  // 若页面已经在 localhost 下，给出更友好的提示
+  if (location.protocol === 'file:' && !navigator.mediaDevices) {
+    setTimeout(function () { toast('提示：如需屏幕捕获，建议用 http 方式打开本页'); }, 900);
+  }
+
+  // ============ Tauri 原生桥接 ============
+  var T = IS_TAURI ? window.__TAURI__ : null;
+
+  function startTauriCapture() {
+    toast('正在捕获屏幕…');
+    T.core.invoke('grab_screen').catch(function (e) { toast('捕获失败：' + e); });
+  }
+
+  function enterCaptureMode(shot) {
+    document.body.classList.add('capturing');
+    var img = new Image();
+    img.onload = function () {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      S.img = canvas;
+      emptyEl.classList.add('hidden');
+      board.style.display = 'block';
+      canvas.style.maxWidth = '100vw';
+      canvas.style.maxHeight = '100vh';
+      resetSelection();
+      setStatus('拖拽框选目标区域 · ' + shot.monitor, true);
+      requestAnimationFrame(function () {
+        try { T.window.getCurrentWindow().show(); T.window.getCurrentWindow().setFocus(); } catch (e) {}
+      });
+    };
+    img.onerror = function () { toast('画面加载失败'); };
+    img.src = shot.dataUrl;
+  }
+
+  function exitCaptureMode() {
+    document.body.classList.remove('capturing');
+    resetSelection();
+    setStatus('待机中', false);
+    try { T.core.invoke('reset_window').catch(function(){}); } catch (e) {}
+  }
+
+  function tauriExport(action) {
+    if (!S.sel) { toast('请先框选区域'); return; }
+    var c = compose();
+    var dataUrl = c.toDataURL('image/png');
+    var b64 = (dataUrl.split(',')[1]) || '';
+    toast('正在导出…');
+    T.core.invoke('export_capture', { pngBase64: b64, action: action })
+      .then(function () {
+        if (action === 'copy') toast('已复制到剪贴板 · ' + c.width + '×' + c.height);
+        else toast('已保存 PNG · ' + c.width + '×' + c.height);
+        exitCaptureMode();
+      })
+      .catch(function (e) { toast('导出失败：' + e); });
+  }
+
+  if (IS_TAURI) {
+    T.event.listen('snap:capture', function (ev) { enterCaptureMode(ev.payload); });
+    setStatus('待机中 · 热键 Ctrl/⌘+Shift+A 截图', false);
+    // 隐藏 Web 专属的“屏幕捕获”文案，桌面端用系统热键
+    var capBtns = document.querySelectorAll('#btnCapture,#btnCapture2');
+    Array.prototype.forEach.call(capBtns, function (b) { b.textContent = b.textContent.replace('捕获屏幕', '截屏 (热键)').replace('开始捕获', '截屏 (热键)'); });
+  }
+
+})();
+</script>
+</body>
+</html>
