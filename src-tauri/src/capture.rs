@@ -18,6 +18,31 @@ use xcap::Monitor;
 
 /// 防止全局热键/托盘菜单在截屏过程中重入。
 pub static CAPTURING: AtomicBool = AtomicBool::new(false);
+/// 进入截屏的 Unix 时间戳（秒），用于卡死兜底。
+pub static CAPTURING_AT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// 尝试开始一次截屏。成功置位返回 true；已被占用返回 false，
+/// 但若占用超过 120 秒（前端崩溃未调用 finish_capture 等）则强制复位后重试一次。
+fn try_begin_capture() -> bool {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    match CAPTURING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+        Ok(_) => {
+            CAPTURING_AT.store(now, Ordering::SeqCst);
+            true
+        }
+        Err(_) => {
+            let at = CAPTURING_AT.load(Ordering::SeqCst);
+            if at > 0 && now - at > 120 {
+                CAPTURING.store(false, Ordering::SeqCst);
+                return try_begin_capture();
+            }
+            false
+        }
+    }
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -407,7 +432,7 @@ fn place_overlay(app: &AppHandle, shot: &Shot) {
 /// 捕获前台窗口：抓取后裁剪到前台窗口矩形；若前台窗口就是本应用主窗口或取不到，
 /// 则优雅回退为整屏捕获。结果同样通过 `snap:capture` 事件推送。
 pub fn capture_window_now(app: &AppHandle) -> Result<(), String> {
-    if CAPTURING.swap(true, Ordering::SeqCst) {
+    if !try_begin_capture() {
         return Ok(());
     }
     let result = (|| -> Result<(), String> {
@@ -489,7 +514,7 @@ pub fn capture_region_png(
 /// 触发一次完整截屏流程：隐藏主窗口 → 截取光标所在显示器 → 将主窗口铺满该显示器
 /// → 通过事件把画面推给前端。由全局热键、托盘菜单、前端按钮共用。
 pub fn capture_now(app: &AppHandle) -> Result<(), String> {
-    if CAPTURING.swap(true, Ordering::SeqCst) {
+    if !try_begin_capture() {
         return Ok(()); // 已在截屏中，忽略重入
     }
 
@@ -610,7 +635,7 @@ pub fn grab_all(app: &AppHandle) -> Result<Shot, String> {
 
 /// 触发多屏拼接截屏流程（逻辑同 `capture_now`，但抓取全部显示器）。
 pub fn capture_all_now(app: &AppHandle) -> Result<(), String> {
-    if CAPTURING.swap(true, Ordering::SeqCst) {
+    if !try_begin_capture() {
         return Ok(());
     }
 

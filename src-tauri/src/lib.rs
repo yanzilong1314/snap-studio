@@ -49,6 +49,7 @@ pub fn run() {
             commands::set_capture_mode,
             commands::export_capture,
             commands::reset_window,
+            commands::finish_capture,
             commands::save_image_to_folder,
             commands::pin_image,
             commands::get_pin_image,

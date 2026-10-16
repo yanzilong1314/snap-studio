@@ -2,7 +2,7 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, Ordering};
 use tauri::{AppHandle, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -140,6 +140,21 @@ pub fn reset_window(app: AppHandle) -> Result<(), String> {
         let _ = win.set_size(LogicalSize::new(1180.0, 780.0));
         let _ = win.center();
         let _ = win.show();
+    }
+    Ok(())
+}
+
+/// 结束截屏会话（前端在复制/保存/取消后调用）：
+/// 复位防重入标志 + 恢复窗口几何并隐藏回托盘 —— 类企业微信「用完即走」，
+/// 截完图不再把主窗口弹到前台；全局热键在隐藏状态下依旧可用。
+#[tauri::command]
+pub fn finish_capture(app: AppHandle) -> Result<(), String> {
+    capture::CAPTURING.store(false, Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_always_on_top(false);
+        let _ = win.set_size(LogicalSize::new(1180.0, 780.0));
+        let _ = win.center();
+        let _ = win.hide();
     }
     Ok(())
 }

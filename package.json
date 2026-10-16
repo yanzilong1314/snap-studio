@@ -1,6 +1,6 @@
 {
   "name": "snap-studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "SnapStudio —— 截图标注工作台（Tauri 2 桌面端）",
   "scripts": {

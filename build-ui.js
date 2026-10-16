@@ -103,7 +103,8 @@ const BRIDGE = `
     document.body.classList.remove('capturing');
     resetSelection();
     setStatus('待机中', false);
-    try { T.core.invoke('reset_window').catch(function(){}); } catch (e) {}
+    // 用完即走：复位防重入标志 + 恢复几何并隐藏回托盘，不再弹出主窗
+    try { T.core.invoke('finish_capture').catch(function(){}); } catch (e) {}
   }
 
   function tauriExport(action) {
