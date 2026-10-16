@@ -13,7 +13,7 @@ use image::{ImageFormat, imageops};
 use serde::Serialize;
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
 use xcap::Monitor;
 
 /// 防止全局热键/托盘菜单在截屏过程中重入。
@@ -393,13 +393,14 @@ fn capture_region_image(
     Ok(out)
 }
 
-/// 把主窗口铺满到 shot 覆盖的屏幕区域（物理坐标 ÷ 缩放比 = 逻辑坐标）。
+/// 把主窗口铺满到 shot 覆盖的屏幕区域。
+/// 使用物理坐标直接对位（而非逻辑坐标 ÷ 缩放比）：Windows/macOS 的 DPI 虚拟化
+/// 以主屏为基准换算逻辑坐标，混合 DPI 多屏下会有累积误差；物理坐标一对一映射，精确无偏。
 fn place_overlay(app: &AppHandle, shot: &Shot) {
     if let Some(win) = app.get_webview_window("main") {
-        let scale = if shot.scale > 0.0 { shot.scale } else { 1.0 };
         let _ = win.set_always_on_top(true);
-        let _ = win.set_position(LogicalPosition::new(shot.x as f64 / scale, shot.y as f64 / scale));
-        let _ = win.set_size(LogicalSize::new(shot.width as f64 / scale, shot.height as f64 / scale));
+        let _ = win.set_position(PhysicalPosition::new(shot.x, shot.y));
+        let _ = win.set_size(PhysicalSize::new(shot.width, shot.height));
     }
 }
 
@@ -501,19 +502,7 @@ pub fn capture_now(app: &AppHandle) -> Result<(), String> {
 
         let shot = grab(app)?;
 
-        // 把主窗口几何铺满整块显示器（用逻辑坐标，由 Tauri 乘以缩放比得到物理像素）
-        if let Some(win) = app.get_webview_window("main") {
-            let scale = if shot.scale > 0.0 { shot.scale } else { 1.0 };
-            let _ = win.set_always_on_top(true);
-            let _ = win.set_position(LogicalPosition::new(
-                shot.x as f64 / scale,
-                shot.y as f64 / scale,
-            ));
-            let _ = win.set_size(LogicalSize::new(
-                shot.width as f64 / scale,
-                shot.height as f64 / scale,
-            ));
-        }
+        place_overlay(app, &shot);
 
         app.emit("snap:capture", &shot)
             .map_err(|e| format!("事件发送失败：{e}"))?;
@@ -633,18 +622,7 @@ pub fn capture_all_now(app: &AppHandle) -> Result<(), String> {
 
         let shot = grab_all(app)?;
 
-        if let Some(win) = app.get_webview_window("main") {
-            let scale = if shot.scale > 0.0 { shot.scale } else { 1.0 };
-            let _ = win.set_always_on_top(true);
-            let _ = win.set_position(LogicalPosition::new(
-                shot.x as f64 / scale,
-                shot.y as f64 / scale,
-            ));
-            let _ = win.set_size(LogicalSize::new(
-                shot.width as f64 / scale,
-                shot.height as f64 / scale,
-            ));
-        }
+        place_overlay(app, &shot);
 
         app.emit("snap:capture", &shot)
             .map_err(|e| format!("事件发送失败：{e}"))?;
@@ -674,18 +652,36 @@ static ORIG_CURSOR: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new
 pub fn scroll_at(_app: &AppHandle, x: i32, y: i32, notches: i32) -> Result<(), String> {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOUSEEVENTF_WHEEL, mouse_event};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetCursorPos};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetClassNameA, GetCursorPos, SetCursorPos, WindowFromPoint,
+    };
+    use windows_sys::core::PSTR;
     let n = notches.clamp(-10, 10);
     if n == 0 {
         return Ok(());
     }
     unsafe {
+        // 预检：目标点落在任务栏/桌面上时滚轮无效，直接报错让前端回退手动模式
+        let pt = POINT { x, y };
+        let hwnd = WindowFromPoint(pt);
+        if hwnd != 0 {
+            let mut buf = [0u8; 32];
+            let len = GetClassNameA(hwnd, PSTR(buf.as_mut_ptr()), 32);
+            if len > 0 {
+                let cls = String::from_utf8_lossy(&buf[..(len as usize).min(31)]).to_lowercase();
+                if cls == "shell_traywnd" || cls == "progman" || cls == "workerw" {
+                    return Err(String::from(
+                        "选区中心在任务栏或桌面上（无可滚动内容）：请调整选区，或手动滚动后点「捕获下一屏」",
+                    ));
+                }
+            }
+        }
         // 首次调用记录原光标位置
         let mut guard = ORIG_CURSOR.lock().unwrap();
         if guard.is_none() {
-            let mut pt: POINT = std::mem::zeroed();
-            if GetCursorPos(&mut pt) != 0 {
-                *guard = Some((pt.x, pt.y));
+            let mut cpt: POINT = std::mem::zeroed();
+            if GetCursorPos(&mut cpt) != 0 {
+                *guard = Some((cpt.x, cpt.y));
             }
         }
         drop(guard);

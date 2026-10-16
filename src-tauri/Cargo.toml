@@ -1,6 +1,6 @@
 [package]
 name = "snap-studio"
-version = "0.1.0"
+version = "0.2.0"
 description = "SnapStudio —— 截图标注工作台"
 authors = ["晏子龙"]
 edition = "2021"
