@@ -655,7 +655,6 @@ pub fn scroll_at(_app: &AppHandle, x: i32, y: i32, notches: i32) -> Result<(), S
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetClassNameA, GetCursorPos, SetCursorPos, WindowFromPoint,
     };
-    use windows_sys::core::PSTR;
     let n = notches.clamp(-10, 10);
     if n == 0 {
         return Ok(());
@@ -666,7 +665,7 @@ pub fn scroll_at(_app: &AppHandle, x: i32, y: i32, notches: i32) -> Result<(), S
         let hwnd = WindowFromPoint(pt);
         if hwnd != 0 {
             let mut buf = [0u8; 32];
-            let len = GetClassNameA(hwnd, PSTR(buf.as_mut_ptr()), 32);
+            let len = GetClassNameA(hwnd, buf.as_mut_ptr(), 32);
             if len > 0 {
                 let cls = String::from_utf8_lossy(&buf[..(len as usize).min(31)]).to_lowercase();
                 if cls == "shell_traywnd" || cls == "progman" || cls == "workerw" {
