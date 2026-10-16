@@ -2,7 +2,7 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::collections::HashMap;
-use std::sync::{Mutex, Ordering};
+use std::sync::{Mutex, atomic::Ordering};
 use tauri::{AppHandle, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
