@@ -341,6 +341,7 @@ body.longmode #toast{bottom:auto;top:6px}
         <option value="window">前台窗口</option>
       </select>
     </div>
+    <button class="btn ghost hidden" id="btnShareState" style="border-color:rgba(61,220,151,.55);color:#3ddc97" title="屏幕共享进行中：按 Alt+A 直接截屏，点此停止共享">共享中</button>
     <button class="btn primary" id="btnCapture">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8M16 3h2.5A2.5 2.5 0 0 1 21 5.5V8M21 16v2.5A2.5 2.5 0 0 1 18.5 21H16M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16"/></svg>
       开始捕获
@@ -657,10 +658,64 @@ body.longmode #toast{bottom:auto;top:6px}
     requestAnimationFrame(syncOverlay);
   }
 
-  // 屏幕捕获
+  // 屏幕捕获 —— 「一次共享，之后即截」（类企业微信体验）：
+  // 首次截屏须经浏览器共享选择器（浏览器安全硬性要求，任何网页无法跳过）；
+  // 共享流会话内保持存活并缓存，之后截屏 / Alt+A 直接抓当前画面，不再弹窗。
+  var SHARED_STREAM = null, SHARED_VIDEO = null, SHARE_N = 0;
+
+  function isTauriEnv() { return !!(window.__tauri__ && window.__tauri__.core); }
+
+  function shareLive() {
+    try {
+      var ts = SHARED_STREAM && SHARED_STREAM.getVideoTracks();
+      return !!(ts && ts.length && ts[0].readyState === 'live');
+    } catch (_) { return false; }
+  }
+
+  function updateShareBadge() {
+    var b = document.getElementById('btnShareState');
+    if (!b || isTauriEnv()) return;
+    if (shareLive()) {
+      b.classList.remove('hidden');
+      b.textContent = '共享中 · Alt+A 即截 (' + SHARE_N + ') · 停止';
+    } else {
+      b.classList.add('hidden');
+    }
+  }
+
+  function stopShare(manual) {
+    if (SHARED_STREAM) {
+      try { SHARED_STREAM.getTracks().forEach(function (t) { t.stop(); }); } catch (_) {}
+    }
+    SHARED_STREAM = null; SHARED_VIDEO = null; SHARE_N = 0;
+    updateShareBadge();
+    if (manual) toast('已停止屏幕共享，下次截屏将重新选择共享内容');
+  }
+
+  function grabFrameFromVideo(v, reuse) {
+    var w = v.videoWidth, h = v.videoHeight;
+    var tmp = document.createElement('img');
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(v, 0, 0, w, h);
+    tmp.onload = function () {
+      loadImage(tmp);
+      toast(reuse ? '直接截屏（无需共享）· 拖拽框选目标区域' : '捕获成功，拖拽框选目标区域');
+    };
+    tmp.onerror = function () { toast('画面冻结失败'); };
+    tmp.src = c.toDataURL('image/png');
+  }
+
   function captureScreen() { if (IS_TAURI) { startTauriCapture(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
       toast('当前环境不支持屏幕捕获，请用「打开图片」');
+      return;
+    }
+    // 已共享：直接抓当前画面
+    if (shareLive()) {
+      SHARE_N++;
+      updateShareBadge();
+      grabFrameFromVideo(SHARED_VIDEO, true);
       return;
     }
     setStatus('请求捕获权限…', false);
@@ -668,22 +723,22 @@ body.longmode #toast{bottom:auto;top:6px}
       video: { frameRate: 30, cursor: 'never' },
       audio: false
     }).then(function (stream) {
+      SHARED_STREAM = stream;
+      SHARE_N = 1;
       var video = document.createElement('video');
       video.srcObject = stream;
       video.muted = true;
       video.playsInline = true;
+      // 用户点浏览器「停止共享」条时同步清理状态
+      var trk = stream.getVideoTracks()[0];
+      if (trk) trk.addEventListener('ended', function () { stopShare(false); });
       return video.play().then(function () {
         return new Promise(function (res) { setTimeout(function () { res(video); }, 260); });
       }).then(function (v) {
-        var w = v.videoWidth, h = v.videoHeight;
-        var tmp = document.createElement('img');
-        var c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(v, 0, 0, w, h);
-        stream.getTracks().forEach(function (t) { t.stop(); });
-        tmp.onload = function () { loadImage(tmp); toast('捕获成功，拖拽框选目标区域'); };
-        tmp.onerror = function () { toast('画面冻结失败'); };
-        tmp.src = c.toDataURL('image/png');
+        SHARED_VIDEO = v;
+        updateShareBadge();
+        setStatus('已载入', true);
+        grabFrameFromVideo(v, false);
       });
     }).catch(function (err) {
       console.warn(err);
@@ -1652,6 +1707,7 @@ body.longmode #toast{bottom:auto;top:6px}
   }
   $('btnCapture').addEventListener('click', startCaptureWithDelay);
   $('btnCapture2').addEventListener('click', startCaptureWithDelay);
+  $('btnShareState').addEventListener('click', function () { stopShare(true); });
   $('btnUpload').addEventListener('click', function () { $('fileInput').click(); });
   $('btnUpload2').addEventListener('click', function () { $('fileInput').click(); });
   $('fileInput').addEventListener('change', function (e) {
@@ -1711,6 +1767,14 @@ body.longmode #toast{bottom:auto;top:6px}
     var tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' && e.target !== textInput) return;
     var mod = e.ctrlKey || e.metaKey;
+    // Alt+A：共享会话内直接截屏（类企业微信）；桌面版有原生热键，不走此分支
+    if (e.altKey && !mod && !e.shiftKey && (e.key === 'a' || e.key === 'A') && !isTauriEnv()) {
+      e.preventDefault();
+      if (document.activeElement && document.activeElement === textInput) return;
+      if (shareLive()) { captureScreen(); }
+      else { toast('尚未共享屏幕：点「开始捕获」选择一次共享后，Alt+A 即可随时截屏'); }
+      return;
+    }
     if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
     if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); doCopy(); return; }
