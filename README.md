@@ -7,7 +7,7 @@
 
 | 分类 | 功能 |
 |---|---|
-| 截屏 | 当前屏幕 / 全部显示器拼接 / 前台窗口自动识别、延时截屏（0/3/5/10s） |
+| 截屏 | 当前屏幕 / 全部显示器拼接 / 前台窗口自动识别、延时截屏（0/3/5/10s）、悬停智能选区（类企业微信：鼠标移到哪绿框亮到哪，单击即选中；UIA 元素级 → 窗口矩形回退） |
 | 标注 | 矩形、椭圆、箭头、直线、画笔、荧光笔、马赛克、文字、序号；选中后移动/改色/删除；撤销重做（快照式） |
 | 智能工具 | 本地离线 OCR（中英，tesseract.js）、翻译（MyMemory）、二维码识别与生成（jsQR / qrcodejs）、GIF 录屏（gif.js，≤15s） |
 | 长截图 | 框选区域 → 浮动控制条 → 自动滚动+自动捕获+像素匹配去重拼接（或手动逐屏捕获） |
@@ -27,7 +27,8 @@ snap-studio-app/      Tauri 工程
   build-ui.js         从 Web 真源生成 ui/index.html（注入 Tauri 桥）
   ui/                 生成物 + pin.html（钉图窗口页）
   src-tauri/          Rust：xcap 抓屏、多屏拼接、区域裁剪、前台窗口识别、
-                      自动滚轮注入、钉图窗口、托盘、全局热键、保存到文件夹
+                      自动滚轮注入、悬停智能选区（UIA + EnumWindows）、
+                      钉图窗口、托盘、全局热键、保存到文件夹
   .github/workflows/  CI：Windows x64 (nsis+msi) 与 macOS universal (dmg)
 ```
 
@@ -68,3 +69,8 @@ gh release create v0.2.0 --title "SnapStudio v0.2.0" --notes "..."
 - 自动滚动：Windows `SetCursorPos` + `mouse_event(MOUSEEVENTF_WHEEL)`（预检
   `WindowFromPoint` 排除任务栏/桌面）；macOS osascript Page Down。
 - 长截图拼接算法 `findScrollOffset`：逐行像素匹配求滚动量，纯函数已单测（8 用例）。
+- 悬停智能选区（`detect.rs`）：覆盖层挡在屏幕最上层，`WindowFromPoint` 只会命中
+  自身 → 改用 **EnumWindows 按 Z 序过滤**（可见/未最小化/未 DWM cloak/矩形含点，
+  排除自身全部窗口 HWND）拿顶层窗口，再用 `uiautomation` crate 从该窗口元素树
+  向下钻取包含光标的最深元素；UIA 在独立线程串行执行（COM 亲和性），调用方
+  `recv_timeout(260ms)` 超时放弃、只处理最新请求；前端 90ms 节流 + 序号作废过期结果。

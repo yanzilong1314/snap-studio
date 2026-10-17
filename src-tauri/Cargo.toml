@@ -1,6 +1,6 @@
 [package]
 name = "snap-studio"
-version = "0.2.1"
+version = "0.3.0"
 description = "SnapStudio —— 截图标注工作台"
 authors = ["晏子龙"]
 edition = "2021"
@@ -25,7 +25,9 @@ base64 = "0.23"
 rfd = "0.17"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Dwm"] }
+# 悬停智能选区：UI Automation 元素级检测（类企业微信「移到哪选到哪」）
+uiautomation = "0.25"
 
 [profile.release]
 codegen-units = 1

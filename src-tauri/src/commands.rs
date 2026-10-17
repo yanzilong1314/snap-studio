@@ -98,6 +98,32 @@ pub fn end_auto_scroll() -> Result<(), String> {
     Ok(())
 }
 
+/// 悬停智能选区（类企业微信）：检测鼠标处的最小可见区域 —— UIA 元素优先，
+/// 窗口矩形回退。返回物理屏幕坐标，由前端换算成图像坐标做绿框高亮。
+/// 自身所有窗口（覆盖层/钉图）都排除在外，检测的是「覆盖层下面」的内容。
+#[tauri::command]
+pub fn detect_hover_region(app: AppHandle) -> Result<Option<crate::detect::HoverRegion>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut exclude: Vec<isize> = Vec::new();
+        for (_, w) in app.webview_windows() {
+            if let Ok(h) = w.hwnd() {
+                exclude.push(h.0 as isize);
+            }
+        }
+        let (x, y) = match crate::detect::cursor_pos() {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+        Ok(crate::detect::detect_at(x, y, &exclude))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = &app;
+        Ok(None)
+    }
+}
+
 /// 把合成好的 PNG（base64）复制到系统剪贴板，或弹出保存对话框写盘。
 #[tauri::command]
 pub fn export_capture(

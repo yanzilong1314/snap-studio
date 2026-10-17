@@ -1,5 +1,6 @@
 mod capture;
 mod commands;
+mod detect;
 mod tray;
 
 use tauri::Manager;
@@ -54,6 +55,7 @@ pub fn run() {
             commands::pin_image,
             commands::get_pin_image,
             commands::clear_pins,
+            commands::detect_hover_region,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
