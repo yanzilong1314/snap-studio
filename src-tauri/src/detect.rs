@@ -3,7 +3,7 @@
 //! 检测优先级：
 //! 1. UI Automation（UIA）：定位光标下的顶层窗口，再沿元素树向下钻取到包含
 //!    光标的最深元素 —— 浏览器 / Office 等可精确到卡片、按钮级别；
-//! 2. 回退：子窗口细化（ChildWindowFromPointEx）+ 顶层窗口 DWM 可见边界。
+//! 2. 回退：顶层窗口 DWM 可见边界。
 //!
 //! 全部坐标为**物理屏幕像素**。UIA/COM 有线程亲和性，检测在独立线程中串行
 //! 执行；调用方带超时等待，超时即放弃（晚到的结果由前端序号作废），保证悬停不卡顿。
@@ -59,11 +59,8 @@ mod win_impl {
 
     use uiautomation::core::{UIAutomation, UIElement};
     use uiautomation::types::TreeScope;
-    use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        ChildWindowFromPointEx, CWP_SKIPINVISIBLE, CWP_SKIPTRANSPARENT, GetWindowRect,
-        ScreenToClient,
-    };
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
 
     use super::HoverRegion;
 
@@ -154,7 +151,7 @@ mod win_impl {
             let hr = unsafe {
                 DwmGetWindowAttribute(
                     hwnd,
-                    DWMWA_CLOAKED,
+                    DWMWA_CLOAKED as u32,
                     &mut cloaked as *mut u32 as *mut core::ffi::c_void,
                     4,
                 )
@@ -215,23 +212,17 @@ mod win_impl {
         Some((r.get_left(), r.get_top(), r.get_width(), r.get_height()))
     }
 
-    /// 回退：可见子窗口下钻两层 + DWM 可见边界。
-    fn window_rect_at(hwnd: isize, x: i32, y: i32) -> Option<HoverRegion> {
+    /// 回退：顶层窗口 DWM 可见边界（排除阴影/不可见缩放边框）。
+    /// （粒度细化由 UIA 主路径承担；windows-sys 0.52 无便捷的 ScreenToClient，
+    /// 顶层窗口矩形已足够作为兜底。）
+    fn window_rect_at(hwnd: isize, _x: i32, _y: i32) -> Option<HoverRegion> {
+        let hwnd_h = hwnd as HWND;
+        if let Some(b) = extended_bounds(hwnd_h) {
+            return normalize((b.left, b.top, b.right - b.left, b.bottom - b.top), hwnd);
+        }
         unsafe {
-            let mut h = hwnd as HWND;
-            for _ in 0..2 {
-                let mut pt = POINT { x, y };
-                if ScreenToClient(h, &mut pt) == 0 {
-                    break;
-                }
-                let child = ChildWindowFromPointEx(h, pt, CWP_SKIPTRANSPARENT | CWP_SKIPINVISIBLE);
-                if child == 0 || child == h {
-                    break;
-                }
-                h = child;
-            }
             let mut r: RECT = std::mem::zeroed();
-            if GetWindowRect(h, &mut r) == 0 {
+            if GetWindowRect(hwnd_h, &mut r) == 0 {
                 return None;
             }
             normalize((r.left, r.top, r.right - r.left, r.bottom - r.top), hwnd)
@@ -245,7 +236,7 @@ mod win_impl {
         let hr = unsafe {
             DwmGetWindowAttribute(
                 hwnd,
-                DWMWA_EXTENDED_FRAME_BOUNDS,
+                DWMWA_EXTENDED_FRAME_BOUNDS as u32,
                 &mut r as *mut RECT as *mut core::ffi::c_void,
                 std::mem::size_of::<RECT>() as u32,
             )
